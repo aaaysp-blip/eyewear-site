@@ -2,8 +2,18 @@
 (function () {
   DB.seedIfEmpty();
 
-  const PAGE_SIZE = 12;
+  const PAGE_SIZE = 20;
   const CART_KEY = 'ew_cart';
+
+  const DEFAULT_FILTERS = { search: '', brand: '', priceMin: '', priceMax: '', frameMin: '', frameMax: '', lensWMin: '', lensWMax: '', lensHMin: '', lensHMax: '' };
+  function hasActiveFilters() {
+    return Object.keys(DEFAULT_FILTERS).some(k => state.filters[k] !== DEFAULT_FILTERS[k]);
+  }
+  function updateFilterBadge() {
+    const dot = document.getElementById('filterActiveDot');
+    if (!dot) return;
+    dot.classList.toggle('hidden', !hasActiveFilters());
+  }
 
   const state = {
     tab: 'new',
@@ -100,8 +110,13 @@
     if (stock === 0) badge = `<span class="card-badge out">หมดสต็อก</span>`;
     else if (isNew) badge = `<span class="card-badge new">ใหม่</span>`;
     const sizeParts = [];
-    if (p.frameWidth) sizeParts.push(`หน้า ${p.frameWidth}มม.`);
-    if (p.lensWidth) sizeParts.push(`เลนส์ ${p.lensWidth}×${p.lensHeight}มม.`);
+    if (p.category === 'accessories') {
+      if (p.accWidth && p.accLength) sizeParts.push(`${p.accWidth}×${p.accLength}มม.`);
+      if (p.material) sizeParts.push(escapeHtml(p.material));
+    } else {
+      if (p.frameWidth) sizeParts.push(`หน้า ${p.frameWidth}มม.`);
+      if (p.lensWidth) sizeParts.push(`เลนส์ ${p.lensWidth}×${p.lensHeight}มม.`);
+    }
     return `
     <div class="card" data-id="${p.id}">
       <div class="card-img"><img src="${img}" alt="${escapeHtml(p.name)}" loading="lazy">${badge}</div>
@@ -190,6 +205,7 @@
     };
     state.page = 1;
     closeFilter();
+    updateFilterBadge();
     renderGrid();
   });
 
@@ -214,18 +230,24 @@
 
   function renderProductPopup() {
     const { product: p, variant: v, qty } = popupState;
-    const img = (v && v.images[0]) || DB.placeholderImage(p.name, '', p.category);
+    const img = (v && v.images[0]) || (p.images && p.images[0]) || DB.placeholderImage(p.name, '', p.category);
     const swatches = p.variants.map(vr => `
       <button class="swatch ${vr.id === v.id ? 'active' : ''} ${vr.stock === 0 ? 'disabled' : ''}" data-vid="${vr.id}" ${vr.stock === 0 ? 'disabled' : ''}>
         ${escapeHtml(vr.color)}${vr.stock === 0 ? ' (หมด)' : ''}
       </button>`).join('');
 
     const specParts = [];
-    if (p.frameWidth) specParts.push(`<div class="spec-item"><div class="val">${p.frameWidth}</div><div class="lbl">หน้าแว่นกว้าง (มม.)</div></div>`);
-    if (p.lensWidth) specParts.push(`<div class="spec-item"><div class="val">${p.lensWidth}</div><div class="lbl">เลนส์กว้าง (มม.)</div></div>`);
-    if (p.lensHeight) specParts.push(`<div class="spec-item"><div class="val">${p.lensHeight}</div><div class="lbl">เลนส์สูง (มม.)</div></div>`);
-    if (p.bridgeWidth) specParts.push(`<div class="spec-item"><div class="val">${p.bridgeWidth}</div><div class="lbl">สะพานแว่น (มม.)</div></div>`);
-    if (p.templeLength) specParts.push(`<div class="spec-item"><div class="val">${p.templeLength}</div><div class="lbl">ความยาวขาแว่น (มม.)</div></div>`);
+    if (p.category === 'accessories') {
+      if (p.accWidth && p.accLength) specParts.push(`<div class="spec-item"><div class="val">${p.accWidth}×${p.accLength}</div><div class="lbl">กว้าง×ยาว (มม.)</div></div>`);
+      if (p.material) specParts.push(`<div class="spec-item"><div class="val">${escapeHtml(p.material)}</div><div class="lbl">วัสดุ</div></div>`);
+    } else {
+      if (p.frameWidth) specParts.push(`<div class="spec-item"><div class="val">${p.frameWidth}</div><div class="lbl">หน้าแว่นกว้าง (มม.)</div></div>`);
+      if (p.lensHeight) specParts.push(`<div class="spec-item"><div class="val">${p.lensHeight}</div><div class="lbl">เลนส์สูง (มม.)</div></div>`);
+      if (p.lensWidth) {
+        const combo = [p.lensWidth, p.bridgeWidth, p.templeLength].filter(v => v != null && v !== '').join('-');
+        specParts.push(`<div class="spec-item"><div class="val">${combo} มม.</div><div class="lbl">ขนาด (เลนส์-สะพาน-ขา)</div></div>`);
+      }
+    }
 
     document.getElementById('productPopupBody').innerHTML = `
       <div class="popup-media"><img src="${img}" alt=""></div>
@@ -500,5 +522,6 @@
 
   // ---------------- init ----------------
   renderCartCount();
+  updateFilterBadge();
   renderGrid();
 })();

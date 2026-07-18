@@ -123,6 +123,23 @@
   let pendingVariants = []; // { tempId, color, stock, images:[dataUrl] }
   let pendingMainImages = []; // [{ original: dataUrl, cropped: dataUrl }] — ภาพหน้าปกของสินค้าที่ครอปแล้ว
 
+  function sizeFieldsHTML(cat) {
+    if (cat === 'accessories') {
+      return `
+        <div class="field"><label>กว้าง (มม.)</label><input type="number" id="npAccWidth" min="0"></div>
+        <div class="field"><label>ยาว (มม.)</label><input type="number" id="npAccLength" min="0"></div>
+        <div class="field"><label>ประเภทวัสดุ</label><input type="text" id="npMaterial" placeholder="เช่น ไมโครไฟเบอร์, หนัง PU, อะคริลิก"></div>
+      `;
+    }
+    return `
+      <div class="field"><label>หน้าแว่นกว้าง (มม.)</label><input type="number" id="npFrameWidth" min="0"></div>
+      <div class="field"><label>เลนส์กว้าง (มม.)</label><input type="number" id="npLensWidth" min="0"></div>
+      <div class="field"><label>เลนส์สูง (มม.)</label><input type="number" id="npLensHeight" min="0"></div>
+      <div class="field"><label>สะพานแว่น (มม.)</label><input type="number" id="npBridgeWidth" min="0"></div>
+      <div class="field"><label>ความยาวขาแว่น (มม.)</label><input type="number" id="npTempleLength" min="0"></div>
+    `;
+  }
+
   function setupNewProductForm() {
     const drop = document.getElementById('uploadDrop');
     const input = document.getElementById('uploadInput');
@@ -134,6 +151,10 @@
       handleFiles(e.dataTransfer.files);
     });
     input.addEventListener('change', () => { handleFiles(input.files); input.value = ''; });
+
+    document.getElementById('npCategory').addEventListener('change', e => {
+      document.getElementById('sizeFieldsWrap').innerHTML = sizeFieldsHTML(e.target.value);
+    });
 
     document.getElementById('btnSaveProduct').addEventListener('click', saveNewProduct);
     document.getElementById('btnAiReadImage').addEventListener('click', runAiReadFromImage);
@@ -569,12 +590,32 @@
     const brand = document.getElementById('npBrand').value.trim();
     const category = document.getElementById('npCategory').value;
     const price = parseFloat(document.getElementById('npPrice').value);
-    const frameWidth = document.getElementById('npFrameWidth').value ? Number(document.getElementById('npFrameWidth').value) : null;
-    const lensWidth = document.getElementById('npLensWidth').value ? Number(document.getElementById('npLensWidth').value) : null;
-    const lensHeight = document.getElementById('npLensHeight').value ? Number(document.getElementById('npLensHeight').value) : null;
-    const bridgeWidth = document.getElementById('npBridgeWidth').value ? Number(document.getElementById('npBridgeWidth').value) : null;
-    const templeLength = document.getElementById('npTempleLength').value ? Number(document.getElementById('npTempleLength').value) : null;
     let code = document.getElementById('npCode').value.trim();
+
+    let sizeData;
+    if (category === 'accessories') {
+      const accWidthEl = document.getElementById('npAccWidth');
+      const accLengthEl = document.getElementById('npAccLength');
+      const materialEl = document.getElementById('npMaterial');
+      sizeData = {
+        accWidth: accWidthEl && accWidthEl.value ? Number(accWidthEl.value) : null,
+        accLength: accLengthEl && accLengthEl.value ? Number(accLengthEl.value) : null,
+        material: materialEl ? materialEl.value.trim() : '',
+      };
+    } else {
+      const fwEl = document.getElementById('npFrameWidth');
+      const lwEl = document.getElementById('npLensWidth');
+      const lhEl = document.getElementById('npLensHeight');
+      const bwEl = document.getElementById('npBridgeWidth');
+      const tlEl = document.getElementById('npTempleLength');
+      sizeData = {
+        frameWidth: fwEl && fwEl.value ? Number(fwEl.value) : null,
+        lensWidth: lwEl && lwEl.value ? Number(lwEl.value) : null,
+        lensHeight: lhEl && lhEl.value ? Number(lhEl.value) : null,
+        bridgeWidth: bwEl && bwEl.value ? Number(bwEl.value) : null,
+        templeLength: tlEl && tlEl.value ? Number(tlEl.value) : null,
+      };
+    }
 
     if (!name || !brand || !price || price <= 0) {
       err.textContent = 'กรุณากรอกชื่อสินค้า, แบรนด์ และราคาให้ถูกต้อง';
@@ -587,7 +628,7 @@
     if (!code) code = DB.generateNextCode();
 
     const product = {
-      code, name, brand, category, price, frameWidth, lensWidth, lensHeight, bridgeWidth, templeLength,
+      code, name, brand, category, price, ...sizeData,
       images: pendingMainImages.map(m => m.cropped),
       variants: pendingVariants.map(v => ({ id: DB.uid('v'), color: v.color.trim() || 'สีมาตรฐาน', stock: v.stock, images: v.images })),
     };
@@ -595,8 +636,10 @@
     showToast(`บันทึกสินค้า ${code} เรียบร้อย`);
 
     // reset form
-    ['npCode', 'npName', 'npBrand', 'npPrice', 'npFrameWidth', 'npLensWidth', 'npLensHeight', 'npBridgeWidth', 'npTempleLength'].forEach(id => document.getElementById(id).value = '');
+    ['npCode', 'npName', 'npBrand', 'npPrice'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('npCode').placeholder = DB.generateNextCode();
+    document.getElementById('npCategory').value = 'sunglasses';
+    document.getElementById('sizeFieldsWrap').innerHTML = sizeFieldsHTML('sunglasses');
     pendingVariants = [];
     pendingMainImages = [];
     renderVariantList();
@@ -640,9 +683,12 @@
 
     const filled = [];
     if (result.productCode) { document.getElementById('npCode').value = result.productCode; filled.push('รหัสสินค้า'); }
-    if (result.lensWidthMm) { document.getElementById('npLensWidth').value = result.lensWidthMm; filled.push('เลนส์กว้าง'); }
-    if (result.bridgeWidthMm) { document.getElementById('npBridgeWidth').value = result.bridgeWidthMm; filled.push('สะพานแว่น'); }
-    if (result.templeLengthMm) { document.getElementById('npTempleLength').value = result.templeLengthMm; filled.push('ความยาวขาแว่น'); }
+    const lwEl = document.getElementById('npLensWidth');
+    if (result.lensWidthMm && lwEl) { lwEl.value = result.lensWidthMm; filled.push('เลนส์กว้าง'); }
+    const bwEl = document.getElementById('npBridgeWidth');
+    if (result.bridgeWidthMm && bwEl) { bwEl.value = result.bridgeWidthMm; filled.push('สะพานแว่น'); }
+    const tlEl = document.getElementById('npTempleLength');
+    if (result.templeLengthMm && tlEl) { tlEl.value = result.templeLengthMm; filled.push('ความยาวขาแว่น'); }
 
     let colorsAdded = 0;
     if (Array.isArray(result.colors)) {
