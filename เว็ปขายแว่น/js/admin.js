@@ -141,10 +141,14 @@
     document.getElementById('btnCropCancel').addEventListener('click', () => {
       document.getElementById('mainImageCropModal').classList.remove('show');
       cropCtx = null;
+      currentAiCropCtx = null;
       processNextCropInQueue();
       processNextAiCropInQueue();
     });
     document.getElementById('btnCropConfirm').addEventListener('click', confirmCrop);
+    document.getElementById('cropRotateMinus').addEventListener('click', () => adjustAiCropRotation(-5));
+    document.getElementById('cropRotatePlus').addEventListener('click', () => adjustAiCropRotation(5));
+    document.getElementById('cropRotateInput').addEventListener('change', e => setAiCropRotation(e.target.value));
   }
 
   async function handleFiles(fileList) {
@@ -162,11 +166,13 @@
 
   // ---- Crop + confirm modal for the product's main/cover image(s) ----
   let mainImageCropQueue = [];
-  let aiCropQueue = []; // [{ img, originalDataUrl, box:{x,y,width,height} (percent), tempId }]
+  let aiCropQueue = []; // [{ img, originalDataUrl, box:{x,y,width,height,rotationDegrees} (percent), tempId }]
   let cropCtx = null; // { img, dispW, dispH, scale, box:{x,y,w,h}, editIndex, originalDataUrl }
+  let currentAiCropCtx = null; // { fullImg, naturalW, naturalH, itemPct, tempId, angle } — only set while adjusting an AI-suggested crop
 
   function processNextCropInQueue() {
     if (!mainImageCropQueue.length) return;
+    currentAiCropCtx = null;
     const dataUrl = mainImageCropQueue.shift();
     const img = new Image();
     img.onload = () => openCropModalForImage(img, dataUrl, null);
@@ -174,15 +180,28 @@
   }
 
   function processNextAiCropInQueue() {
-    if (!aiCropQueue.length) return;
+    if (!aiCropQueue.length) { currentAiCropCtx = null; updateRotationControlUI(); return; }
     const item = aiCropQueue.shift();
-    const naturalW = item.img.naturalWidth, naturalH = item.img.naturalHeight;
-    const workingCanvas = buildRotatedWorkingImage(item.img, naturalW, naturalH, item.box);
+    currentAiCropCtx = {
+      fullImg: item.img,
+      naturalW: item.img.naturalWidth,
+      naturalH: item.img.naturalHeight,
+      itemPct: item.box,
+      tempId: item.tempId,
+      angle: item.box.rotationDegrees || 0,
+    };
+    renderRotatedCropStage();
+  }
+
+  function renderRotatedCropStage() {
+    const c = currentAiCropCtx;
+    if (!c) return;
+    const workingCanvas = buildRotatedWorkingImage(c.fullImg, c.naturalW, c.naturalH, { ...c.itemPct, rotationDegrees: c.angle });
     const workingDataUrl = workingCanvas.toDataURL('image/jpeg', 0.92);
     const workingImg = new Image();
     workingImg.onload = () => {
-      const rawW = (item.box.width / 100) * naturalW;
-      const rawH = (item.box.height / 100) * naturalH;
+      const rawW = (c.itemPct.width / 100) * c.naturalW;
+      const rawH = (c.itemPct.height / 100) * c.naturalH;
       const boxSizePx = Math.max(rawW, rawH) * 1.05;
       const boxPct = {
         x: ((workingCanvas.width - boxSizePx) / 2 / workingCanvas.width) * 100,
@@ -191,12 +210,34 @@
         height: (boxSizePx / workingCanvas.height) * 100,
       };
       openCropModalForImage(workingImg, workingDataUrl, null, croppedDataUrl => {
-        const v = pendingVariants.find(x => x.tempId === item.tempId);
+        const v = pendingVariants.find(x => x.tempId === c.tempId);
         if (v) { v.images = [croppedDataUrl]; renderVariantList(); }
+        currentAiCropCtx = null;
         processNextAiCropInQueue();
       }, boxPct, true);
     };
     workingImg.src = workingDataUrl;
+  }
+
+  function adjustAiCropRotation(delta) {
+    if (!currentAiCropCtx) return;
+    currentAiCropCtx.angle = (currentAiCropCtx.angle || 0) + delta;
+    renderRotatedCropStage();
+  }
+
+  function setAiCropRotation(value) {
+    if (!currentAiCropCtx) return;
+    currentAiCropCtx.angle = Number(value) || 0;
+    renderRotatedCropStage();
+  }
+
+  function updateRotationControlUI() {
+    const wrap = document.getElementById('cropRotateWrap');
+    if (!wrap) return;
+    if (!currentAiCropCtx) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    const input = document.getElementById('cropRotateInput');
+    if (input) input.value = Math.round(currentAiCropCtx.angle);
   }
 
   function buildRotatedWorkingImage(fullImg, naturalW, naturalH, itemPct) {
@@ -233,6 +274,7 @@
     stage.style.width = dispW + 'px';
     stage.style.height = dispH + 'px';
     stage.innerHTML = `<img src="${originalDataUrl}" style="width:${dispW}px;height:${dispH}px;display:block;user-select:none;pointer-events:none;">`;
+    updateRotationControlUI();
 
     let box;
     if (suggestedBoxPct) {
@@ -503,6 +545,7 @@
         ColorDetect.loadImageFromFile(file).then(({ dataUrl }) => {
           const img = new Image();
           img.onload = () => {
+            currentAiCropCtx = null;
             openCropModalForImage(img, dataUrl, null, croppedDataUrl => {
               const v = pendingVariants.find(x => x.tempId === tid);
               if (v) { v.images = [croppedDataUrl]; renderVariantList(); }
