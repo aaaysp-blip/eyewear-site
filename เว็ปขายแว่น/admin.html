@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>แอดมิน — ร้านแว่นตา</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===== Login Gate ===== -->
+<div class="login-shell" id="loginShell">
+  <div class="login-box">
+    <h1>เข้าสู่ระบบแอดมิน</h1>
+    <p>รหัสผ่านเริ่มต้น: <code>admin1234</code> (แก้ไขได้ในหน้าตั้งค่าหลังเข้าระบบ)</p>
+    <div class="field">
+      <label>รหัสผ่าน</label>
+      <input type="password" id="loginPassword" placeholder="กรอกรหัสผ่าน">
+    </div>
+    <div class="error-text" id="loginError"></div>
+    <button class="btn btn-primary btn-block" id="btnLogin" style="margin-top:8px">เข้าสู่ระบบ</button>
+  </div>
+</div>
+
+<!-- ===== Admin Shell ===== -->
+<div class="admin-shell hidden" id="adminShell">
+  <nav class="admin-nav">
+    <div class="brand">แว่นตา<small>ADMIN</small></div>
+    <a class="nav-link" data-view="dashboard">แดชบอร์ด</a>
+    <a class="nav-link" data-view="newProduct">ลงสินค้าใหม่</a>
+    <a class="nav-link" data-view="stock">จัดการสต็อก</a>
+    <a class="nav-link" data-view="restock">สั่งซื้อสต็อก</a>
+    <a class="nav-link" data-view="orders">จัดการออเดอร์</a>
+    <a class="nav-link" data-view="crm">ลูกค้า (CRM)</a>
+    <a class="nav-link" data-view="settings">ตั้งค่า</a>
+    <div style="margin-top:auto;padding-top:14px;border-top:1px solid var(--border)">
+      <a class="nav-link" href="index.html">↩ กลับหน้าร้าน</a>
+      <a class="nav-link" id="btnLogout">ออกจากระบบ</a>
+    </div>
+  </nav>
+
+  <main class="admin-main">
+
+    <!-- Dashboard -->
+    <section class="admin-view" id="view-dashboard">
+      <div class="admin-header"><h1>แดชบอร์ดสรุป</h1></div>
+      <div id="lowStockBox"></div>
+      <div class="stat-grid" id="statGrid"></div>
+      <div class="panel">
+        <h2>สินค้าขายดี</h2>
+        <table><thead><tr><th>รหัส</th><th>ชื่อสินค้า</th><th>จำนวนที่ขายได้</th></tr></thead><tbody id="bestSellerBody"></tbody></table>
+      </div>
+    </section>
+
+    <!-- New product -->
+    <section class="admin-view" id="view-newProduct">
+      <div class="admin-header"><h1>ลงสินค้าใหม่</h1></div>
+      <div class="panel">
+        <div class="form-grid">
+          <div class="field"><label>รหัสสินค้า</label><input type="text" id="npCode" placeholder="สร้างอัตโนมัติถ้าเว้นว่าง"></div>
+          <div class="field"><label>ชื่อสินค้า *</label><input type="text" id="npName"></div>
+          <div class="field"><label>แบรนด์ *</label><input type="text" id="npBrand"></div>
+          <div class="field"><label>หมวดหมู่ *</label>
+            <select id="npCategory">
+              <option value="sunglasses">แว่นกันแดด</option>
+              <option value="frames">กรอบแว่นตา</option>
+              <option value="kids">แว่นเด็ก</option>
+              <option value="accessories">อุปกรณ์เสริม</option>
+            </select>
+          </div>
+          <div class="field"><label>ราคา (บาท) *</label><input type="number" id="npPrice" min="0"></div>
+          <div class="field"><label>หน้าแว่นกว้าง (มม.)</label><input type="number" id="npFrameWidth" min="0"></div>
+          <div class="field"><label>เลนส์กว้าง (มม.)</label><input type="number" id="npLensWidth" min="0"></div>
+          <div class="field"><label>เลนส์สูง (มม.)</label><input type="number" id="npLensHeight" min="0"></div>
+          <div class="field"><label>สะพานแว่น (มม.)</label><input type="number" id="npBridgeWidth" min="0"></div>
+          <div class="field"><label>ความยาวขาแว่น (มม.)</label><input type="number" id="npTempleLength" min="0"></div>
+        </div>
+
+        <div class="field" style="margin-top:18px">
+          <label>ภาพหลักของสินค้า (ใช้เป็นภาพหน้าปกในหน้าร้าน)</label>
+          <div class="upload-drop" id="uploadDrop">
+            📷 ลากไฟล์รูปมาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์
+            <input type="file" id="uploadInput" accept="image/*" style="display:none">
+          </div>
+        </div>
+        <div id="mainImagesPreview"></div>
+
+        <div style="margin-top:14px">
+          <button class="btn" id="btnAiReadImage" type="button">✨ ให้ AI อ่านข้อมูลจากภาพ</button>
+          <span class="tag-muted" style="margin-left:8px">อ่านรหัสสินค้า/ขนาดจากป้ายหรือขนาดที่พิมพ์บนขาแว่น และเดาสีที่เห็นในรูป (ต้องอัปโหลดภาพหลักก่อน)</span>
+          <div class="error-text" id="aiReadStatus"></div>
+        </div>
+
+        <div class="field" style="margin-top:22px">
+          <label>ตัวเลือกสี (เพิ่มเอง — 1 ตัวเลือก = 1 สี พร้อมรูปและชื่อสีของตัวเอง)</label>
+        </div>
+        <div id="variantList"></div>
+
+        <div class="error-text" id="npError"></div>
+        <button class="btn btn-primary" style="margin-top:16px" id="btnSaveProduct">บันทึกสินค้า</button>
+      </div>
+    </section>
+
+    <!-- Stock management -->
+    <section class="admin-view" id="view-stock">
+      <div class="admin-header"><h1>จัดการสต็อกสินค้า</h1></div>
+      <div class="panel">
+        <div class="field" style="max-width:320px;margin-bottom:14px" id="stockSearchWrap">
+          <input type="text" id="stockSearch" placeholder="ค้นหารหัส/ชื่อ/แบรนด์">
+        </div>
+        <div id="stockContent"></div>
+      </div>
+    </section>
+
+    <!-- Restock (Purchase Orders) -->
+    <section class="admin-view" id="view-restock">
+      <div class="admin-header"><h1>สั่งซื้อสต็อก</h1></div>
+
+      <div class="panel" id="restockLowStockPanel"></div>
+
+      <div class="panel">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btnReviewRestock" type="button">ตรวจสอบรายการก่อนสร้างใบสั่งซื้อ</button>
+          <button class="btn" id="btnExportCsv" type="button">ส่งออก CSV</button>
+          <button class="btn" id="btnExportImage" type="button">ส่งออกเป็นรูปภาพ</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 id="toggleAddOtherPanel" style="cursor:pointer;display:flex;align-items:center;gap:8px;user-select:none">
+          <span id="addOtherToggleIcon">▸</span> เพิ่มสินค้าอื่นนอกเหนือจากที่ใกล้หมด (ถ้าต้องการ)
+        </h2>
+        <div id="addOtherPanelBody" class="hidden" style="margin-top:14px">
+          <div class="field" style="max-width:320px;margin-bottom:14px">
+            <input type="text" id="restockSearch" placeholder="พิมพ์รหัส/ชื่อ/แบรนด์เพื่อค้นหาแล้วเพิ่มลงใบสั่งซื้อ">
+          </div>
+          <table>
+            <thead><tr><th>รหัส</th><th>สินค้า</th><th>สี</th><th>สต็อกปัจจุบัน</th><th>จำนวนที่จะสั่ง</th><th></th></tr></thead>
+            <tbody id="restockPickerBody"></tbody>
+          </table>
+
+          <div id="restockDraftWrap" class="hidden" style="margin-top:18px">
+            <h2>รายการที่เพิ่มเพิ่มเติม</h2>
+            <table>
+              <thead><tr><th>รหัส</th><th>สินค้า</th><th>สี</th><th>จำนวนที่จะสั่ง</th><th></th></tr></thead>
+              <tbody id="restockDraftBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>ใบสั่งซื้อที่รอตรวจรับ (Recheck ก่อนเข้าสต็อกจริง)</h2>
+        <div id="restockPendingList"></div>
+      </div>
+
+      <div class="panel">
+        <h2>ประวัติใบสั่งซื้อที่รับเข้าสต็อกแล้ว</h2>
+        <div id="restockHistoryList"></div>
+      </div>
+    </section>
+
+    <!-- Orders -->
+    <section class="admin-view" id="view-orders">
+      <div class="admin-header"><h1>จัดการออเดอร์</h1></div>
+      <div id="orderList"></div>
+    </section>
+
+    <!-- CRM -->
+    <section class="admin-view" id="view-crm">
+      <div class="admin-header"><h1>ลูกค้า (CRM)</h1></div>
+      <div class="panel">
+        <table>
+          <thead><tr><th>เบอร์โทร</th><th>ชื่อ</th><th>จังหวัด</th><th>จำนวนออเดอร์</th><th>ยอดซื้อสะสม</th></tr></thead>
+          <tbody id="crmBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section class="admin-view" id="view-settings">
+      <div class="admin-header"><h1>ตั้งค่า</h1></div>
+      <div class="panel">
+        <div class="form-grid">
+          <div class="field"><label>เบอร์พร้อมเพย์ / เลขผู้เสียภาษีร้าน</label><input type="text" id="stPromptpay"></div>
+          <div class="field"><label>เกณฑ์แจ้งเตือนสต็อกใกล้หมด (ชิ้น)</label><input type="number" id="stThreshold" min="0"></div>
+          <div class="field"><label>เปลี่ยนรหัสผ่านแอดมิน</label><input type="password" id="stPassword" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:14px" id="btnSaveSettings">บันทึกการตั้งค่า</button>
+        <div class="error-text" id="settingsMsg"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ===== Image Crop / Confirm Modal ===== -->
+<div class="modal" id="mainImageCropModal">
+  <div class="modal-backdrop" data-close-modal="mainImageCropModal"></div>
+  <div class="modal-panel modal-panel-narrow">
+    <button class="modal-close" data-close-modal="mainImageCropModal">✕</button>
+    <div style="padding:26px">
+      <h2 style="margin-top:0">ปรับกรอบรูปก่อนใช้งาน</h2>
+      <p class="tag-muted" style="margin:0 0 14px">ลากกรอบเพื่อจัดตำแหน่ง ลากมุมล่างขวาเพื่อปรับขนาด แล้วกดยืนยัน</p>
+      <div style="display:flex;justify-content:center">
+        <div id="cropStage" style="position:relative;overflow:hidden;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px;max-width:320px;margin-left:auto;margin-right:auto">
+        <button class="btn" id="btnCropCancel" type="button">ยกเลิก</button>
+        <button class="btn btn-primary btn-block" id="btnCropConfirm" type="button">ยืนยันรูป</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Restock Review Modal ===== -->
+<div class="modal" id="restockReviewModal">
+  <div class="modal-backdrop" data-close-modal="restockReviewModal"></div>
+  <div class="modal-panel">
+    <button class="modal-close" data-close-modal="restockReviewModal">✕</button>
+    <div style="padding:26px">
+      <h2 style="margin-top:0">ตรวจสอบใบสั่งซื้อก่อนบันทึก</h2>
+      <div class="error-text" id="restockReviewError"></div>
+      <table>
+        <thead><tr><th>รหัส</th><th>สินค้า</th><th>สี</th><th>จำนวนที่จะสั่ง</th></tr></thead>
+        <tbody id="restockReviewBody"></tbody>
+      </table>
+      <div class="field" style="max-width:420px;margin-top:14px">
+        <label>หมายเหตุ (เช่น ชื่อซัพพลายเออร์)</label>
+        <input type="text" id="restockReviewNote">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button class="btn" data-close-modal="restockReviewModal" type="button">ยกเลิก แก้ไขต่อ</button>
+        <button class="btn btn-primary btn-block" id="btnConfirmCreateRestock" type="button">ยืนยันสร้างใบสั่งซื้อ</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="js/db.js"></script>
+<script src="js/color-detect.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ร้านแว่นตา</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">แว่นตา<small>OPTICAL STORE</small></div>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="btnCart" title="ตะกร้า" aria-label="ตะกร้า">
+        🛒<span class="badge-count hidden" id="cartCount">0</span>
+      </button>
+      <button class="btn" id="btnFilter">☰ ตัวกรอง</button>
+      <a class="btn btn-ghost" href="admin.html">แอดมิน</a>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab-btn active" data-tab="new">สินค้าเข้าใหม่</button>
+  <button class="tab-btn" data-tab="sunglasses">แว่นกันแดด</button>
+  <button class="tab-btn" data-tab="frames">กรอบแว่นตา</button>
+  <button class="tab-btn" data-tab="kids">แว่นเด็ก</button>
+  <button class="tab-btn" data-tab="accessories">อุปกรณ์เสริม</button>
+</nav>
+
+<div class="toolbar">
+  <div class="result-count" id="resultCount"></div>
+</div>
+
+<main>
+  <div class="grid" id="productGrid"></div>
+  <div class="pagination" id="pagination"></div>
+</main>
+
+<footer class="site-footer">© ร้านแว่นตา — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้)</footer>
+
+<!-- ===== Filter Drawer ===== -->
+<div class="overlay" id="filterOverlay"></div>
+<aside class="drawer" id="filterDrawer">
+  <div class="drawer-head">
+    <strong>ตัวกรองสินค้า</strong>
+    <button class="modal-close" id="btnCloseFilter" style="position:static">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="field">
+      <label>ค้นหา (รหัส / ชื่อ / แบรนด์)</label>
+      <input type="text" id="fSearch" placeholder="เช่น C1, Aviator, RayVue">
+    </div>
+    <div class="field">
+      <label>แบรนด์</label>
+      <select id="fBrand"><option value="">ทั้งหมด</option></select>
+    </div>
+    <div class="field">
+      <label>ช่วงราคา (บาท)</label>
+      <div class="range-row">
+        <input type="number" id="fPriceMin" placeholder="ต่ำสุด">
+        <span>–</span>
+        <input type="number" id="fPriceMax" placeholder="สูงสุด">
+      </div>
+    </div>
+    <div class="field">
+      <label>หน้าแว่นกว้าง (มม.)</label>
+      <div class="range-row">
+        <input type="number" id="fFrameMin" placeholder="ต่ำสุด">
+        <span>–</span>
+        <input type="number" id="fFrameMax" placeholder="สูงสุด">
+      </div>
+    </div>
+    <div class="field">
+      <label>เลนส์กว้าง (มม.)</label>
+      <div class="range-row">
+        <input type="number" id="fLensWMin" placeholder="ต่ำสุด">
+        <span>–</span>
+        <input type="number" id="fLensWMax" placeholder="สูงสุด">
+      </div>
+    </div>
+    <div class="field">
+      <label>เลนส์สูง (มม.)</label>
+      <div class="range-row">
+        <input type="number" id="fLensHMin" placeholder="ต่ำสุด">
+        <span>–</span>
+        <input type="number" id="fLensHMax" placeholder="สูงสุด">
+      </div>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn" id="btnResetFilter">ล้างค่า</button>
+    <button class="btn btn-primary btn-block" id="btnApplyFilter">แสดงผลลัพธ์</button>
+  </div>
+</aside>
+
+<!-- ===== Product Popup ===== -->
+<div class="modal" id="productModal">
+  <div class="modal-backdrop" data-close-modal="productModal"></div>
+  <div class="modal-panel">
+    <button class="modal-close" data-close-modal="productModal">✕</button>
+    <div class="product-popup" id="productPopupBody"></div>
+  </div>
+</div>
+
+<!-- ===== Cart / Checkout Modal ===== -->
+<div class="modal" id="cartModal">
+  <div class="modal-backdrop" data-close-modal="cartModal"></div>
+  <div class="modal-panel">
+    <button class="modal-close" data-close-modal="cartModal">✕</button>
+    <div class="steps" id="checkoutSteps">
+      <div class="step" data-step="1"><span class="num">1</span> ตะกร้า</div>
+      <div class="step-sep"></div>
+      <div class="step" data-step="2"><span class="num">2</span> ชำระเงิน</div>
+      <div class="step-sep"></div>
+      <div class="step" data-step="3"><span class="num">3</span> ที่อยู่จัดส่ง</div>
+      <div class="step-sep"></div>
+      <div class="step" data-step="4"><span class="num">4</span> ยืนยัน</div>
+    </div>
+    <div class="checkout-body" id="checkoutBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/db.js"></script>
+<script src="js/promptpay.js"></script>
+<script src="js/vendor/qrcode.min.js"></script>
+<script src="js/store.js"></script>
+</body>
+</html>
