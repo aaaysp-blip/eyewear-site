@@ -205,6 +205,14 @@
       <div style="display:flex;justify-content:center">
         <div id="cropStage" style="position:relative;overflow:hidden;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)"></div>
       </div>
+      <div class="field hidden" id="cropRotateWrap" style="max-width:320px;margin:14px auto 0">
+        <label>มุมหมุน (องศา) — ปรับถ้า AI หมุนไม่ตรงตามที่ต้องการ</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm" id="cropRotateMinus" type="button">− 5°</button>
+          <input type="number" id="cropRotateInput" style="text-align:center;width:80px" value="0">
+          <button class="btn btn-sm" id="cropRotatePlus" type="button">+ 5°</button>
+        </div>
+      </div>
       <div style="display:flex;gap:10px;margin-top:18px;max-width:320px;margin-left:auto;margin-right:auto">
         <button class="btn" id="btnCropCancel" type="button">ยกเลิก</button>
         <button class="btn btn-primary btn-block" id="btnCropConfirm" type="button">ยืนยันรูป</button>
