@@ -15,16 +15,18 @@
       <button class="icon-btn" id="btnCart" title="ตะกร้า" aria-label="ตะกร้า">
         🛒<span class="badge-count hidden" id="cartCount">0</span>
       </button>
-      <button class="btn" id="btnFilter">☰ ตัวกรอง</button>
-      <a class="btn btn-ghost" href="admin.html">แอดมิน</a>
+      <button class="btn" id="btnFilter">☰ ตัวกรอง<span class="filter-dot hidden" id="filterActiveDot"></span></button>
     </div>
   </div>
 </header>
 
 <nav class="tabs" id="tabs">
   <button class="tab-btn active" data-tab="new">สินค้าเข้าใหม่</button>
-  <button class="tab-btn" data-tab="sunglasses">แว่นกันแดด</button>
+  <button class="tab-btn" data-tab="sunglasses">แว่นกันแดด/แว่นแฟชั่น</button>
   <button class="tab-btn" data-tab="frames">กรอบแว่นตา</button>
+  <button class="tab-btn" data-tab="bluelight">แว่นบลูออโต้</button>
+  <button class="tab-btn" data-tab="safety">แว่นเซฟตี้/แว่นกันลม</button>
+  <button class="tab-btn" data-tab="polarized">แว่น Polarized</button>
   <button class="tab-btn" data-tab="kids">แว่นเด็ก</button>
   <button class="tab-btn" data-tab="accessories">อุปกรณ์เสริม</button>
 </nav>
@@ -38,7 +40,7 @@
   <div class="pagination" id="pagination"></div>
 </main>
 
-<footer class="site-footer">© ร้านแว่นตา — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้)</footer>
+<footer class="site-footer">© ร้านแว่นตา — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="admin.html">แอดมิน</a></footer>
 
 <!-- ===== Filter Drawer ===== -->
 <div class="overlay" id="filterOverlay"></div>
