@@ -115,7 +115,10 @@
       if (p.material) sizeParts.push(escapeHtml(p.material));
     } else {
       if (p.frameWidth) sizeParts.push(`หน้า ${p.frameWidth}มม.`);
-      if (p.lensWidth) sizeParts.push(`เลนส์ ${p.lensWidth}×${p.lensHeight}มม.`);
+      if (p.lensWidth) {
+        const combo = [p.lensWidth, p.bridgeWidth, p.templeLength].filter(v => v != null && v !== '').join('-');
+        sizeParts.push(`${combo}มม.`);
+      }
     }
     return `
     <div class="card" data-id="${p.id}">
@@ -242,11 +245,10 @@
       if (p.material) specParts.push(`<div class="spec-item"><div class="val">${escapeHtml(p.material)}</div><div class="lbl">วัสดุ</div></div>`);
     } else {
       if (p.frameWidth) specParts.push(`<div class="spec-item"><div class="val">${p.frameWidth}</div><div class="lbl">หน้าแว่นกว้าง (มม.)</div></div>`);
+      if (p.lensWidth) specParts.push(`<div class="spec-item"><div class="val">${p.lensWidth}</div><div class="lbl">เลนส์กว้าง (มม.)</div></div>`);
       if (p.lensHeight) specParts.push(`<div class="spec-item"><div class="val">${p.lensHeight}</div><div class="lbl">เลนส์สูง (มม.)</div></div>`);
-      if (p.lensWidth) {
-        const combo = [p.lensWidth, p.bridgeWidth, p.templeLength].filter(v => v != null && v !== '').join('-');
-        specParts.push(`<div class="spec-item"><div class="val">${combo} มม.</div><div class="lbl">ขนาด (เลนส์-สะพาน-ขา)</div></div>`);
-      }
+      if (p.bridgeWidth) specParts.push(`<div class="spec-item"><div class="val">${p.bridgeWidth}</div><div class="lbl">สะพานแว่น (มม.)</div></div>`);
+      if (p.templeLength) specParts.push(`<div class="spec-item"><div class="val">${p.templeLength}</div><div class="lbl">ความยาวขาแว่น (มม.)</div></div>`);
     }
 
     document.getElementById('productPopupBody').innerHTML = `
