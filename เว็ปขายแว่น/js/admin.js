@@ -617,7 +617,7 @@
     status.style.color = '';
     status.textContent = 'AI กำลังอ่านข้อมูลจากภาพ...';
 
-    const prompt = 'This photo shows one or more eyewear items (glasses/sunglasses), possibly at an angle or tilted, and possibly with a product tag/label, and possibly with frame size markings printed on the inside of a temple arm (standard format like "52\u25a118-140" or "52-18-140", where the first number is lens width in mm, the middle number is bridge width in mm, and the last number is temple/arm length in mm). Respond with ONLY one JSON object, no markdown fences, no other text: {"productCode":string_or_null,"lensWidthMm":number_or_null,"bridgeWidthMm":number_or_null,"templeLengthMm":number_or_null,"items":[{"x":number,"y":number,"width":number,"height":number,"rotationDegrees":number,"colorName":string}]}. productCode is any visible model/style code printed on a tag, label, or the frame itself (null if none is clearly visible). lensWidthMm, bridgeWidthMm and templeLengthMm must come only from a clearly visible, legible printed size marking (null if none visible or not legible \u2014 never guess a number). items lists every separate physical eyewear item in the photo: a bounding box (x,y,width,height as percentages 0-100 of the full image, x,y = top-left corner) that fully contains that ENTIRE item \u2014 a little extra margin is fine, better than cutting it off \u2014 rotationDegrees is the clockwise angle from -45 to 45 needed to make that item appear level/front-facing (0 if already level), and colorName, a short Thai name for that item\'s dominant color. If only one item is visible, return a single-element array covering the whole product.';
+    const prompt = 'This photo shows one or more eyewear items (glasses/sunglasses), possibly with a product tag/label, and possibly with frame size markings printed on the inside of a temple arm (standard format like "52\u25a118-140" or "52-18-140", where the first number is lens width in mm, the middle number is bridge width in mm, and the last number is temple/arm length in mm). Respond with ONLY one JSON object, no markdown fences, no other text: {"productCode":string_or_null,"lensWidthMm":number_or_null,"bridgeWidthMm":number_or_null,"templeLengthMm":number_or_null,"colors":[string,...]}. productCode is any visible model/style code printed on a tag, label, or the frame itself (null if none is clearly visible). lensWidthMm, bridgeWidthMm and templeLengthMm must come only from a clearly visible, legible printed size marking (null if none visible or not legible \u2014 never guess a number). colors is a list of short Thai color names, one per distinct item/color visible in the photo (e.g. if there are 4 items of 4 different colors, list 4 color names); if you cannot tell colors apart or there is only one item, return a single-element array with your best guess.';
 
     let result;
     try {
@@ -644,30 +644,21 @@
     if (result.bridgeWidthMm) { document.getElementById('npBridgeWidth').value = result.bridgeWidthMm; filled.push('สะพานแว่น'); }
     if (result.templeLengthMm) { document.getElementById('npTempleLength').value = result.templeLengthMm; filled.push('ความยาวขาแว่น'); }
 
-    const items = Array.isArray(result.items) ? result.items.filter(b => typeof b.x === 'number' && typeof b.y === 'number' && typeof b.width === 'number' && typeof b.height === 'number') : [];
-
-    if (items.length) {
-      const img = new Image();
-      img.onload = () => {
-        items.forEach(item => {
-          const tempId = 'tmp_' + Math.random().toString(36).slice(2);
-          pendingVariants.push({ tempId, color: item.colorName ? String(item.colorName) : '', stock: 5, images: [] });
-          aiCropQueue.push({ img, originalDataUrl: original, box: item, tempId });
-        });
-        renderVariantList();
-        status.style.color = '';
-        const parts = [];
-        if (filled.length) parts.push(`เติมข้อมูล: ${filled.join(', ')}`);
-        parts.push(`เพิ่มตัวเลือกสี ${items.length} สี — จะขึ้นหน้าต่างครอปให้ปรับ/ยืนยันทีละสี`);
-        status.textContent = parts.join(' · ');
-        processNextAiCropInQueue();
-      };
-      img.src = original;
-      return;
+    let colorsAdded = 0;
+    if (Array.isArray(result.colors)) {
+      result.colors.forEach(colorName => {
+        if (!colorName) return;
+        pendingVariants.push({ tempId: 'tmp_' + Math.random().toString(36).slice(2), color: String(colorName), stock: 5, images: [] });
+        colorsAdded++;
+      });
+      if (colorsAdded) renderVariantList();
     }
 
     status.style.color = '';
-    status.textContent = filled.length ? `เติมข้อมูล: ${filled.join(', ')} — ไม่พบสีที่แยกได้ชัดเจนในรูปนี้` : 'AI ไม่พบข้อมูลที่อ่านได้ชัดเจนจากภาพนี้ — กรอกเองได้เลย';
+    const parts = [];
+    if (filled.length) parts.push(`เติมข้อมูล: ${filled.join(', ')}`);
+    if (colorsAdded) parts.push(`เพิ่มตัวเลือกสี ${colorsAdded} สี (ยังไม่มีรูป — อัปโหลดรูปเพิ่มเองได้ด้านล่าง)`);
+    status.textContent = parts.length ? parts.join(' · ') : 'AI ไม่พบข้อมูลที่อ่านได้ชัดเจนจากภาพนี้ — กรอกเองได้เลย';
   }
 
   // ================= Stock management =================
