@@ -85,6 +85,10 @@ button{ font-family: inherit; }
   background: var(--accent); color:#fff; font-size:10.5px; font-weight:700;
   min-width:18px; height:18px; border-radius:9px; display:flex; align-items:center; justify-content:center; padding:0 4px;
 }
+.filter-dot{
+  display:inline-block; width:8px; height:8px; border-radius:50%;
+  background: var(--accent); margin-left:6px; vertical-align:middle;
+}
 
 /* ---- Tabs ---- */
 .tabs{
@@ -125,7 +129,7 @@ button{ font-family: inherit; }
 }
 .card:hover{ box-shadow: var(--shadow-lg); transform: translateY(-2px); }
 .card-img{
-  aspect-ratio: 1/1; background: var(--surface-2);
+  aspect-ratio: 4/3; background: var(--surface-2);
   display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
 }
 .card-img img{ width:100%; height:100%; object-fit:cover; }
