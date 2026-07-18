@@ -176,14 +176,55 @@
   function processNextAiCropInQueue() {
     if (!aiCropQueue.length) return;
     const item = aiCropQueue.shift();
-    openCropModalForImage(item.img, item.originalDataUrl, null, croppedDataUrl => {
-      const v = pendingVariants.find(x => x.tempId === item.tempId);
-      if (v) { v.images = [croppedDataUrl]; renderVariantList(); }
-      processNextAiCropInQueue();
-    }, item.box);
+    const naturalW = item.img.naturalWidth, naturalH = item.img.naturalHeight;
+    const workingCanvas = buildRotatedWorkingImage(item.img, naturalW, naturalH, item.box);
+    const workingDataUrl = workingCanvas.toDataURL('image/jpeg', 0.92);
+    const workingImg = new Image();
+    workingImg.onload = () => {
+      const rawW = (item.box.width / 100) * naturalW;
+      const rawH = (item.box.height / 100) * naturalH;
+      const boxSizePx = Math.max(rawW, rawH) * 1.05;
+      const boxPct = {
+        x: ((workingCanvas.width - boxSizePx) / 2 / workingCanvas.width) * 100,
+        y: ((workingCanvas.height - boxSizePx) / 2 / workingCanvas.height) * 100,
+        width: (boxSizePx / workingCanvas.width) * 100,
+        height: (boxSizePx / workingCanvas.height) * 100,
+      };
+      openCropModalForImage(workingImg, workingDataUrl, null, croppedDataUrl => {
+        const v = pendingVariants.find(x => x.tempId === item.tempId);
+        if (v) { v.images = [croppedDataUrl]; renderVariantList(); }
+        processNextAiCropInQueue();
+      }, boxPct, true);
+    };
+    workingImg.src = workingDataUrl;
   }
 
-  function openCropModalForImage(img, originalDataUrl, editIndex, onConfirm, suggestedBoxPct) {
+  function buildRotatedWorkingImage(fullImg, naturalW, naturalH, itemPct) {
+    const rawW = (itemPct.width / 100) * naturalW;
+    const rawH = (itemPct.height / 100) * naturalH;
+    const cx = (itemPct.x / 100) * naturalW + rawW / 2;
+    const cy = (itemPct.y / 100) * naturalH + rawH / 2;
+    const angle = ((itemPct.rotationDegrees || 0) * Math.PI) / 180;
+
+    const pad = Math.max(rawW, rawH) * 1.1;
+    const workSize = Math.max(24, Math.min(Math.max(rawW, rawH) + pad * 2, Math.max(naturalW, naturalH)));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(workSize);
+    canvas.height = Math.round(workSize);
+    const ctx = canvas.getContext('2d');
+    // พื้นขาวรองไว้ก่อน เผื่อพื้นที่หลังหมุนล้นขอบรูปต้นฉบับ (โดยเฉพาะชิ้นที่อยู่ใกล้ขอบภาพ)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // หมุนรูปต้นฉบับทั้งภาพให้ชิ้นนี้อยู่ตรงกลางและหน้าตรง โดยไม่ครอปก่อนหมุน (กันปัญหาจุดศูนย์กลางเพี้ยนตอนอยู่ใกล้ขอบภาพ)
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(-angle);
+    ctx.translate(-cx, -cy);
+    ctx.drawImage(fullImg, 0, 0, naturalW, naturalH);
+    return canvas;
+  }
+
+  function openCropModalForImage(img, originalDataUrl, editIndex, onConfirm, suggestedBoxPct, removeBg) {
     const stage = document.getElementById('cropStage');
     const maxW = 480;
     const scale = Math.min(1, maxW / img.naturalWidth);
@@ -220,7 +261,7 @@
       };
     }
 
-    cropCtx = { img, dispW, dispH, scale, box, editIndex, originalDataUrl, onConfirm: onConfirm || null };
+    cropCtx = { img, dispW, dispH, scale, box, editIndex, originalDataUrl, onConfirm: onConfirm || null, removeBg: !!removeBg };
     renderCropBox();
     document.getElementById('mainImageCropModal').classList.add('show');
   }
@@ -269,12 +310,13 @@
 
   function confirmCrop() {
     if (!cropCtx) return;
-    const { img, box, scale, editIndex, originalDataUrl, onConfirm } = cropCtx;
+    const { img, box, scale, editIndex, originalDataUrl, onConfirm, removeBg } = cropCtx;
     const sx = Math.round(box.x / scale), sy = Math.round(box.y / scale);
     const sw = Math.round(box.w / scale), sh = Math.round(box.h / scale);
     const canvas = document.createElement('canvas');
     canvas.width = 600; canvas.height = 600;
     canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, 600, 600);
+    if (removeBg) removeBackgroundToWhiteInPlace(canvas);
     const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
     document.getElementById('mainImageCropModal').classList.remove('show');
@@ -291,6 +333,80 @@
     }
     renderMainImagesPreview();
     processNextCropInQueue();
+  }
+
+  function removeBackgroundToWhiteInPlace(canvas) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    if (w < 2 || h < 2) return;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+    const threshold = 32;
+    const feather = 22;
+
+    let rs = 0, gs = 0, bs = 0, count = 0;
+    for (let x = 0; x < w; x++) {
+      [0, h - 1].forEach(y => { const i = (y * w + x) * 4; rs += data[i]; gs += data[i + 1]; bs += data[i + 2]; count++; });
+    }
+    for (let y = 0; y < h; y++) {
+      [0, w - 1].forEach(x => { const i = (y * w + x) * 4; rs += data[i]; gs += data[i + 1]; bs += data[i + 2]; count++; });
+    }
+    const bg = count > 0 ? [rs / count, gs / count, bs / count] : [255, 255, 255];
+
+    function distAt(idx) {
+      const i = idx * 4;
+      const dr = data[i] - bg[0], dg = data[i + 1] - bg[1], db = data[i + 2] - bg[2];
+      return Math.sqrt(dr * dr + dg * dg + db * db);
+    }
+
+    const visited = new Uint8Array(w * h);
+    const stack = [];
+    for (let x = 0; x < w; x++) {
+      [0, h - 1].forEach(y => {
+        const idx = y * w + x;
+        if (!visited[idx] && distAt(idx) < threshold) { visited[idx] = 1; stack.push(idx); }
+      });
+    }
+    for (let y = 0; y < h; y++) {
+      [0, w - 1].forEach(x => {
+        const idx = y * w + x;
+        if (!visited[idx] && distAt(idx) < threshold) { visited[idx] = 1; stack.push(idx); }
+      });
+    }
+    while (stack.length) {
+      const idx = stack.pop();
+      const x = idx % w, y = (idx - x) / w;
+      const neighbors = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
+      for (const [nx, ny] of neighbors) {
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const nidx = ny * w + nx;
+        if (visited[nidx]) continue;
+        if (distAt(nidx) < threshold) { visited[nidx] = 1; stack.push(nidx); }
+      }
+    }
+    for (let idx = 0; idx < w * h; idx++) {
+      if (visited[idx]) {
+        data[idx * 4] = 255; data[idx * 4 + 1] = 255; data[idx * 4 + 2] = 255;
+      } else {
+        const x = idx % w, y = (idx - x) / w;
+        let nearRemoved = false;
+        const neighbors = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
+        for (const [nx, ny] of neighbors) {
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          if (visited[ny * w + nx]) { nearRemoved = true; break; }
+        }
+        if (nearRemoved) {
+          const d = distAt(idx);
+          if (d < threshold + feather) {
+            const t = (d - threshold) / feather; // 0 = right at the removed edge, 1 = further from it
+            data[idx * 4] = Math.round(data[idx * 4] * t + 255 * (1 - t));
+            data[idx * 4 + 1] = Math.round(data[idx * 4 + 1] * t + 255 * (1 - t));
+            data[idx * 4 + 2] = Math.round(data[idx * 4 + 2] * t + 255 * (1 - t));
+          }
+        }
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
   }
 
   function renderMainImagesPreview() {
@@ -458,7 +574,7 @@
     status.style.color = '';
     status.textContent = 'AI กำลังอ่านข้อมูลจากภาพ...';
 
-    const prompt = 'This photo shows one or more eyewear items (glasses/sunglasses), possibly with a product tag/label, and possibly with frame size markings printed on the inside of a temple arm (standard format like "52\u25a118-140" or "52-18-140", where the first number is lens width in mm, the middle number is bridge width in mm, and the last number is temple/arm length in mm). Respond with ONLY one JSON object, no markdown fences, no other text: {"productCode":string_or_null,"lensWidthMm":number_or_null,"bridgeWidthMm":number_or_null,"templeLengthMm":number_or_null,"items":[{"x":number,"y":number,"width":number,"height":number,"colorName":string}]}. productCode is any visible model/style code printed on a tag, label, or the frame itself (null if none is clearly visible). lensWidthMm, bridgeWidthMm and templeLengthMm must come only from a clearly visible, legible printed size marking (null if none visible or not legible \u2014 never guess a number). items lists every separate physical eyewear item in the photo: a bounding box (x,y,width,height as percentages 0-100 of the full image, x,y = top-left corner) that fully contains that ENTIRE item \u2014 a little extra margin is fine, better than cutting it off \u2014 and colorName, a short Thai name for that item\'s dominant color. If only one item is visible, return a single-element array covering the whole product.';
+    const prompt = 'This photo shows one or more eyewear items (glasses/sunglasses), possibly at an angle or tilted, and possibly with a product tag/label, and possibly with frame size markings printed on the inside of a temple arm (standard format like "52\u25a118-140" or "52-18-140", where the first number is lens width in mm, the middle number is bridge width in mm, and the last number is temple/arm length in mm). Respond with ONLY one JSON object, no markdown fences, no other text: {"productCode":string_or_null,"lensWidthMm":number_or_null,"bridgeWidthMm":number_or_null,"templeLengthMm":number_or_null,"items":[{"x":number,"y":number,"width":number,"height":number,"rotationDegrees":number,"colorName":string}]}. productCode is any visible model/style code printed on a tag, label, or the frame itself (null if none is clearly visible). lensWidthMm, bridgeWidthMm and templeLengthMm must come only from a clearly visible, legible printed size marking (null if none visible or not legible \u2014 never guess a number). items lists every separate physical eyewear item in the photo: a bounding box (x,y,width,height as percentages 0-100 of the full image, x,y = top-left corner) that fully contains that ENTIRE item \u2014 a little extra margin is fine, better than cutting it off \u2014 rotationDegrees is the clockwise angle from -45 to 45 needed to make that item appear level/front-facing (0 if already level), and colorName, a short Thai name for that item\'s dominant color. If only one item is visible, return a single-element array covering the whole product.';
 
     let result;
     try {
