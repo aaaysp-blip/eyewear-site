@@ -142,6 +142,7 @@
       document.getElementById('mainImageCropModal').classList.remove('show');
       cropCtx = null;
       processNextCropInQueue();
+      processNextAiCropInQueue();
     });
     document.getElementById('btnCropConfirm').addEventListener('click', confirmCrop);
   }
@@ -161,6 +162,7 @@
 
   // ---- Crop + confirm modal for the product's main/cover image(s) ----
   let mainImageCropQueue = [];
+  let aiCropQueue = []; // [{ img, originalDataUrl, box:{x,y,width,height} (percent), tempId }]
   let cropCtx = null; // { img, dispW, dispH, scale, box:{x,y,w,h}, editIndex, originalDataUrl }
 
   function processNextCropInQueue() {
@@ -171,7 +173,17 @@
     img.src = dataUrl;
   }
 
-  function openCropModalForImage(img, originalDataUrl, editIndex, onConfirm) {
+  function processNextAiCropInQueue() {
+    if (!aiCropQueue.length) return;
+    const item = aiCropQueue.shift();
+    openCropModalForImage(item.img, item.originalDataUrl, null, croppedDataUrl => {
+      const v = pendingVariants.find(x => x.tempId === item.tempId);
+      if (v) { v.images = [croppedDataUrl]; renderVariantList(); }
+      processNextAiCropInQueue();
+    }, item.box);
+  }
+
+  function openCropModalForImage(img, originalDataUrl, editIndex, onConfirm, suggestedBoxPct) {
     const stage = document.getElementById('cropStage');
     const maxW = 480;
     const scale = Math.min(1, maxW / img.naturalWidth);
@@ -181,13 +193,32 @@
     stage.style.height = dispH + 'px';
     stage.innerHTML = `<img src="${originalDataUrl}" style="width:${dispW}px;height:${dispH}px;display:block;user-select:none;pointer-events:none;">`;
 
-    const boxSize = Math.min(dispW, dispH);
-    const box = {
-      x: Math.round((dispW - boxSize) / 2),
-      y: Math.round((dispH - boxSize) / 2),
-      w: boxSize,
-      h: boxSize,
-    };
+    let box;
+    if (suggestedBoxPct) {
+      // ครอปเป็นสี่เหลี่ยมจัตุรัสเสมอ (ตามที่เครื่องมือนี้ออกแบบไว้) แต่ให้จุดเริ่มต้นมาจากตำแหน่ง/ขนาดที่ AI เสนอ
+      // แทนที่จะเริ่มจากกึ่งกลางภาพเสมอ — แอดมินยังลาก/ปรับขนาดต่อได้ตามปกติก่อนกดยืนยัน
+      const rawX = (suggestedBoxPct.x / 100) * dispW;
+      const rawY = (suggestedBoxPct.y / 100) * dispH;
+      const rawW = (suggestedBoxPct.width / 100) * dispW;
+      const rawH = (suggestedBoxPct.height / 100) * dispH;
+      const cx = rawX + rawW / 2;
+      const cy = rawY + rawH / 2;
+      const size = Math.max(24, Math.min(dispW, dispH, Math.max(rawW, rawH) * 1.15));
+      box = {
+        x: Math.max(0, Math.min(dispW - size, Math.round(cx - size / 2))),
+        y: Math.max(0, Math.min(dispH - size, Math.round(cy - size / 2))),
+        w: Math.round(size),
+        h: Math.round(size),
+      };
+    } else {
+      const boxSize = Math.min(dispW, dispH);
+      box = {
+        x: Math.round((dispW - boxSize) / 2),
+        y: Math.round((dispH - boxSize) / 2),
+        w: boxSize,
+        h: boxSize,
+      };
+    }
 
     cropCtx = { img, dispW, dispH, scale, box, editIndex, originalDataUrl, onConfirm: onConfirm || null };
     renderCropBox();
@@ -427,7 +458,7 @@
     status.style.color = '';
     status.textContent = 'AI กำลังอ่านข้อมูลจากภาพ...';
 
-    const prompt = 'This photo shows one or more eyewear items (glasses/sunglasses), possibly with a product tag/label, and possibly with frame size markings printed on the inside of a temple arm (standard format like "52\u25a118-140" or "52-18-140", where the first number is lens width in mm, the middle number is bridge width in mm, and the last number is temple/arm length in mm). Respond with ONLY one JSON object, no markdown fences, no other text: {"productCode":string_or_null,"lensWidthMm":number_or_null,"bridgeWidthMm":number_or_null,"templeLengthMm":number_or_null,"colors":[string,...]}. productCode is any visible model/style code printed on a tag, label, or the frame itself (null if none is clearly visible). lensWidthMm, bridgeWidthMm and templeLengthMm must come only from a clearly visible, legible printed size marking (null if none visible or not legible \u2014 never guess a number). colors is a list of short Thai color names, one per distinct item/color visible in the photo (e.g. if there are 4 items of 4 different colors, list 4 color names); if you cannot tell colors apart or there is only one item, return a single-element array with your best guess.';
+    const prompt = 'This photo shows one or more eyewear items (glasses/sunglasses), possibly with a product tag/label, and possibly with frame size markings printed on the inside of a temple arm (standard format like "52\u25a118-140" or "52-18-140", where the first number is lens width in mm, the middle number is bridge width in mm, and the last number is temple/arm length in mm). Respond with ONLY one JSON object, no markdown fences, no other text: {"productCode":string_or_null,"lensWidthMm":number_or_null,"bridgeWidthMm":number_or_null,"templeLengthMm":number_or_null,"items":[{"x":number,"y":number,"width":number,"height":number,"colorName":string}]}. productCode is any visible model/style code printed on a tag, label, or the frame itself (null if none is clearly visible). lensWidthMm, bridgeWidthMm and templeLengthMm must come only from a clearly visible, legible printed size marking (null if none visible or not legible \u2014 never guess a number). items lists every separate physical eyewear item in the photo: a bounding box (x,y,width,height as percentages 0-100 of the full image, x,y = top-left corner) that fully contains that ENTIRE item \u2014 a little extra margin is fine, better than cutting it off \u2014 and colorName, a short Thai name for that item\'s dominant color. If only one item is visible, return a single-element array covering the whole product.';
 
     let result;
     try {
@@ -454,21 +485,30 @@
     if (result.bridgeWidthMm) { document.getElementById('npBridgeWidth').value = result.bridgeWidthMm; filled.push('สะพานแว่น'); }
     if (result.templeLengthMm) { document.getElementById('npTempleLength').value = result.templeLengthMm; filled.push('ความยาวขาแว่น'); }
 
-    let colorsAdded = 0;
-    if (Array.isArray(result.colors)) {
-      result.colors.forEach(colorName => {
-        if (!colorName) return;
-        pendingVariants.push({ tempId: 'tmp_' + Math.random().toString(36).slice(2), color: String(colorName), stock: 5, images: [] });
-        colorsAdded++;
-      });
-      if (colorsAdded) renderVariantList();
+    const items = Array.isArray(result.items) ? result.items.filter(b => typeof b.x === 'number' && typeof b.y === 'number' && typeof b.width === 'number' && typeof b.height === 'number') : [];
+
+    if (items.length) {
+      const img = new Image();
+      img.onload = () => {
+        items.forEach(item => {
+          const tempId = 'tmp_' + Math.random().toString(36).slice(2);
+          pendingVariants.push({ tempId, color: item.colorName ? String(item.colorName) : '', stock: 5, images: [] });
+          aiCropQueue.push({ img, originalDataUrl: original, box: item, tempId });
+        });
+        renderVariantList();
+        status.style.color = '';
+        const parts = [];
+        if (filled.length) parts.push(`เติมข้อมูล: ${filled.join(', ')}`);
+        parts.push(`เพิ่มตัวเลือกสี ${items.length} สี — จะขึ้นหน้าต่างครอปให้ปรับ/ยืนยันทีละสี`);
+        status.textContent = parts.join(' · ');
+        processNextAiCropInQueue();
+      };
+      img.src = original;
+      return;
     }
 
     status.style.color = '';
-    const parts = [];
-    if (filled.length) parts.push(`เติมข้อมูล: ${filled.join(', ')}`);
-    if (colorsAdded) parts.push(`เพิ่มตัวเลือกสี ${colorsAdded} สี (ยังไม่มีรูป — ใส่เพิ่มเองได้ด้านล่าง)`);
-    status.textContent = parts.length ? parts.join(' · ') : 'AI ไม่พบข้อมูลที่อ่านได้ชัดเจนจากภาพนี้ — กรอกเองได้เลย';
+    status.textContent = filled.length ? `เติมข้อมูล: ${filled.join(', ')} — ไม่พบสีที่แยกได้ชัดเจนในรูปนี้` : 'AI ไม่พบข้อมูลที่อ่านได้ชัดเจนจากภาพนี้ — กรอกเองได้เลย';
   }
 
   // ================= Stock management =================
