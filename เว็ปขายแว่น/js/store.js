@@ -233,7 +233,7 @@
 
   function renderProductPopup() {
     const { product: p, variant: v, qty } = popupState;
-    const img = (v && v.images[0]) || (p.images && p.images[0]) || DB.placeholderImage(p.name, '', p.category);
+    const img = (v && v.images[0]) || (p.imagesOriginal && p.imagesOriginal[0]) || (p.images && p.images[0]) || DB.placeholderImage(p.name, '', p.category);
     const swatches = p.variants.map(vr => `
       <button class="swatch ${vr.id === v.id ? 'active' : ''} ${vr.stock === 0 ? 'disabled' : ''}" data-vid="${vr.id}" ${vr.stock === 0 ? 'disabled' : ''}>
         ${escapeHtml(vr.color)}${vr.stock === 0 ? ' (หมด)' : ''}
@@ -252,7 +252,7 @@
     }
 
     document.getElementById('productPopupBody').innerHTML = `
-      <div class="popup-media"><img src="${img}" alt=""></div>
+      <div class="popup-media"><img src="${img}" alt="" id="popupMediaImg"><span class="popup-zoom-hint">🔍 แตะเพื่อซูม</span></div>
       <div class="popup-info">
         <div class="popup-code">${p.code}</div>
         <div class="popup-name">${escapeHtml(p.name)}</div>
@@ -301,6 +301,9 @@
     });
     const addBtn = document.getElementById('btnAddCart');
     if (addBtn) addBtn.addEventListener('click', addToCartFromPopup);
+
+    const mediaImg = document.getElementById('popupMediaImg');
+    if (mediaImg) mediaImg.addEventListener('click', () => openImageZoom(img));
   }
 
   function changeQty(delta) {
@@ -328,6 +331,61 @@
     showToast('เพิ่มลงตะกร้าแล้ว');
     productModal.classList.remove('show');
   }
+
+  // ---------------- Image zoom ----------------
+  const zoomModal = document.getElementById('imageZoomModal');
+  const zoomStage = document.getElementById('zoomStage');
+  const zoomImgEl = document.getElementById('zoomImg');
+  let zoomScale = 1, zoomPanX = 0, zoomPanY = 0;
+
+  function applyZoomTransform() {
+    zoomImgEl.style.transform = `translate(${zoomPanX}px, ${zoomPanY}px) scale(${zoomScale})`;
+    zoomStage.classList.toggle('dragging', false);
+  }
+
+  function openImageZoom(src) {
+    zoomImgEl.src = src;
+    zoomScale = 1; zoomPanX = 0; zoomPanY = 0;
+    applyZoomTransform();
+    zoomModal.classList.add('show');
+  }
+
+  function setZoom(newScale) {
+    zoomScale = Math.max(1, Math.min(5, newScale));
+    if (zoomScale === 1) { zoomPanX = 0; zoomPanY = 0; }
+    applyZoomTransform();
+  }
+
+  document.getElementById('zoomIn').addEventListener('click', () => setZoom(zoomScale + 0.5));
+  document.getElementById('zoomOut').addEventListener('click', () => setZoom(zoomScale - 0.5));
+  document.getElementById('zoomReset').addEventListener('click', () => setZoom(1));
+
+  zoomStage.addEventListener('wheel', e => {
+    e.preventDefault();
+    setZoom(zoomScale + (e.deltaY < 0 ? 0.3 : -0.3));
+  }, { passive: false });
+
+  let dragging = false, dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
+  zoomStage.addEventListener('pointerdown', e => {
+    if (zoomScale <= 1) return;
+    dragging = true;
+    zoomStage.classList.add('dragging');
+    dragStartX = e.clientX; dragStartY = e.clientY;
+    panStartX = zoomPanX; panStartY = zoomPanY;
+    zoomStage.setPointerCapture(e.pointerId);
+  });
+  zoomStage.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    zoomPanX = panStartX + (e.clientX - dragStartX);
+    zoomPanY = panStartY + (e.clientY - dragStartY);
+    applyZoomTransform();
+  });
+  ['pointerup', 'pointercancel'].forEach(evt => {
+    zoomStage.addEventListener(evt, () => { dragging = false; zoomStage.classList.remove('dragging'); });
+  });
+  zoomModal.querySelectorAll('[data-close-modal]').forEach(el => {
+    el.addEventListener('click', () => setZoom(1));
+  });
 
   // ---------------- Modal close (generic) ----------------
   document.querySelectorAll('[data-close-modal]').forEach(el => {

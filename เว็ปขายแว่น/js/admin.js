@@ -142,6 +142,12 @@
     `;
   }
 
+  function renderSizeFields(cat) {
+    const wrap = document.getElementById('sizeFieldsWrap');
+    wrap.innerHTML = sizeFieldsHTML(cat);
+    wrap.dataset.kind = cat === 'accessories' ? 'accessories' : 'eyewear';
+  }
+
   function setupNewProductForm() {
     const drop = document.getElementById('uploadDrop');
     const input = document.getElementById('uploadInput');
@@ -155,7 +161,12 @@
     input.addEventListener('change', () => { handleFiles(input.files); input.value = ''; });
 
     document.getElementById('npCategory').addEventListener('change', e => {
-      document.getElementById('sizeFieldsWrap').innerHTML = sizeFieldsHTML(e.target.value);
+      const newCat = e.target.value;
+      const newKind = newCat === 'accessories' ? 'accessories' : 'eyewear';
+      const wrap = document.getElementById('sizeFieldsWrap');
+      if (wrap.dataset.kind !== newKind) {
+        renderSizeFields(newCat);
+      }
     });
 
     document.getElementById('btnSaveProduct').addEventListener('click', saveNewProduct);
@@ -175,12 +186,24 @@
     document.getElementById('cropRotateInput').addEventListener('change', e => setAiCropRotation(e.target.value));
   }
 
+  const MAX_MAIN_IMAGES = 5;
+
   async function handleFiles(fileList) {
     const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    let remaining = MAX_MAIN_IMAGES - pendingMainImages.length - mainImageCropQueue.length;
+    if (remaining <= 0) {
+      showToast(`เพิ่มภาพหลักได้สูงสุด ${MAX_MAIN_IMAGES} รูป`);
+      return;
+    }
+    if (files.length > remaining) {
+      showToast(`เพิ่มได้อีกแค่ ${remaining} รูป (สูงสุด ${MAX_MAIN_IMAGES} รูป) — เกินมาจะไม่ถูกเพิ่ม`);
+    }
     for (const file of files) {
+      if (remaining <= 0) break;
       try {
         const { dataUrl } = await ColorDetect.loadImageFromFile(file);
         mainImageCropQueue.push(dataUrl);
+        remaining--;
       } catch (e) {
         console.error(e);
       }
@@ -651,6 +674,7 @@
     const product = {
       code, name, brand, category, price, ...sizeData,
       images: pendingMainImages.map(m => m.cropped),
+      imagesOriginal: pendingMainImages.map(m => m.original),
       variants: pendingVariants.map(v => ({ id: v.existingId || DB.uid('v'), color: v.color.trim() || 'สีมาตรฐาน', stock: v.stock, images: v.images })),
     };
     if (editingProductId) {
@@ -668,7 +692,7 @@
     ['npCode', 'npName', 'npBrand', 'npPrice'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('npCode').placeholder = DB.generateNextCode();
     document.getElementById('npCategory').value = 'sunglasses';
-    document.getElementById('sizeFieldsWrap').innerHTML = sizeFieldsHTML('sunglasses');
+    renderSizeFields('sunglasses');
     pendingVariants = [];
     pendingMainImages = [];
     renderVariantList();
@@ -694,7 +718,7 @@
     document.getElementById('npBrand').value = p.brand;
     document.getElementById('npCategory').value = p.category;
     document.getElementById('npPrice').value = p.price;
-    document.getElementById('sizeFieldsWrap').innerHTML = sizeFieldsHTML(p.category);
+    renderSizeFields(p.category);
 
     if (p.category === 'accessories') {
       const accWidthEl = document.getElementById('npAccWidth');
@@ -716,7 +740,10 @@
       if (tlEl) tlEl.value = p.templeLength != null ? p.templeLength : '';
     }
 
-    pendingMainImages = (p.images || []).map(img => ({ original: img, cropped: img }));
+    pendingMainImages = (p.images || []).map((img, i) => ({
+      original: (p.imagesOriginal && p.imagesOriginal[i]) || img,
+      cropped: img,
+    }));
     pendingVariants = p.variants.map(v => ({
       tempId: 'tmp_' + Math.random().toString(36).slice(2),
       existingId: v.id,
