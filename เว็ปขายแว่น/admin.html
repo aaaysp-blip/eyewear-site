@@ -28,8 +28,8 @@
     <div class="brand">แว่นตา<small>ADMIN</small></div>
     <a class="nav-link" data-view="dashboard">แดชบอร์ด</a>
     <a class="nav-link" data-view="newProduct">ลงสินค้าใหม่</a>
-    <a class="nav-link" data-view="stock">จัดการสต็อก</a>
-    <a class="nav-link" data-view="restock">สั่งซื้อสต็อก</a>
+    <a class="nav-link" data-view="stock">แก้ไขสินค้า</a>
+    <a class="nav-link" data-view="restock">สั่งซื้อสินค้า</a>
     <a class="nav-link" data-view="orders">จัดการออเดอร์</a>
     <a class="nav-link" data-view="crm">ลูกค้า (CRM)</a>
     <a class="nav-link" data-view="settings">ตั้งค่า</a>
@@ -74,7 +74,7 @@
           </div>
           <div class="field"><label>ราคา (บาท) *</label><input type="number" id="npPrice" min="0"></div>
         </div>
-        <div class="form-grid" id="sizeFieldsWrap" style="margin-top:4px">
+        <div class="form-grid" id="sizeFieldsWrap" data-kind="eyewear" style="margin-top:4px">
           <div class="field"><label>หน้าแว่นกว้าง (มม.)</label><input type="number" id="npFrameWidth" min="0"></div>
           <div class="field"><label>เลนส์กว้าง (มม.)</label><input type="number" id="npLensWidth" min="0"></div>
           <div class="field"><label>เลนส์สูง (มม.)</label><input type="number" id="npLensHeight" min="0"></div>
@@ -83,7 +83,7 @@
         </div>
 
         <div class="field" style="margin-top:18px">
-          <label>ภาพหลักของสินค้า (ใช้เป็นภาพหน้าปกในหน้าร้าน)</label>
+          <label>ภาพหลักของสินค้า (ใช้เป็นภาพหน้าปกในหน้าร้าน — เพิ่มได้สูงสุด 5 รูป)</label>
           <div class="upload-drop" id="uploadDrop">
             📷 ลากไฟล์รูปมาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์
             <input type="file" id="uploadInput" accept="image/*" style="display:none">
@@ -110,7 +110,7 @@
 
     <!-- Stock management -->
     <section class="admin-view" id="view-stock">
-      <div class="admin-header"><h1>จัดการสต็อกสินค้า</h1></div>
+      <div class="admin-header"><h1>แก้ไขสินค้า</h1></div>
       <div class="panel">
         <div class="field" style="max-width:320px;margin-bottom:14px" id="stockSearchWrap">
           <input type="text" id="stockSearch" placeholder="ค้นหารหัส/ชื่อ/แบรนด์">
@@ -121,7 +121,7 @@
 
     <!-- Restock (Purchase Orders) -->
     <section class="admin-view" id="view-restock">
-      <div class="admin-header"><h1>สั่งซื้อสต็อก</h1></div>
+      <div class="admin-header"><h1>สั่งซื้อสินค้า</h1></div>
 
       <div class="panel" id="restockLowStockPanel"></div>
 

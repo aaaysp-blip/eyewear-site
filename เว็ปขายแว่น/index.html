@@ -106,6 +106,22 @@
   </div>
 </div>
 
+<!-- ===== Image Zoom ===== -->
+<div class="modal" id="imageZoomModal">
+  <div class="modal-backdrop" data-close-modal="imageZoomModal"></div>
+  <div class="zoom-panel">
+    <button class="modal-close" data-close-modal="imageZoomModal">✕</button>
+    <div class="zoom-stage" id="zoomStage">
+      <img id="zoomImg" src="" alt="" draggable="false">
+    </div>
+    <div class="zoom-controls">
+      <button type="button" id="zoomOut">−</button>
+      <button type="button" id="zoomReset">รีเซ็ต</button>
+      <button type="button" id="zoomIn">+</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Cart / Checkout Modal ===== -->
 <div class="modal" id="cartModal">
   <div class="modal-backdrop" data-close-modal="cartModal"></div>
