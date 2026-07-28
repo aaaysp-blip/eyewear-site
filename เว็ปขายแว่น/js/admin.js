@@ -312,10 +312,6 @@
     return canvas;
   }
 
-  // อัตราส่วนของกรอบครอป ให้ตรงกับสัดส่วนการ์ดสินค้าในหน้าร้าน (3:4 กว้าง:สูง)
-  // เพื่อไม่ให้ครอปซ้ำสองรอบ (ครอปในแอดมิน แล้วโดน object-fit:cover ตัดซ้ำอีกทีตอนแสดงผล)
-  const CROP_ASPECT = 3 / 4;
-
   function openCropModalForImage(img, originalDataUrl, editIndex, onConfirm, suggestedBoxPct, removeBg) {
     const stage = document.getElementById('cropStage');
     const maxW = 480;
@@ -329,38 +325,23 @@
 
     let box;
     if (suggestedBoxPct) {
-      // ให้จุดเริ่มต้นมาจากตำแหน่ง/ขนาดที่ AI เสนอ แต่ยังคงสัดส่วน 3:4 ของกรอบครอป
-      // แอดมินยังลาก/ปรับขนาดต่อได้ตามปกติก่อนกดยืนยัน
+      // ให้จุดเริ่มต้นมาจากตำแหน่ง/ขนาดที่ AI เสนอ (มีขอบเผื่อไว้เล็กน้อย) แอดมินยังปรับต่อได้ก่อนกดยืนยัน
       const rawX = (suggestedBoxPct.x / 100) * dispW;
       const rawY = (suggestedBoxPct.y / 100) * dispH;
       const rawW = (suggestedBoxPct.width / 100) * dispW;
       const rawH = (suggestedBoxPct.height / 100) * dispH;
-      const cx = rawX + rawW / 2;
-      const cy = rawY + rawH / 2;
-      let boxH = Math.min(dispH, Math.max(rawW, rawH) * 1.15);
-      let boxW = boxH * CROP_ASPECT;
-      if (boxW > dispW) { boxW = dispW; boxH = boxW / CROP_ASPECT; }
+      const pad = Math.max(rawW, rawH) * 0.1;
+      const bw = Math.min(dispW, rawW + pad * 2);
+      const bh = Math.min(dispH, rawH + pad * 2);
       box = {
-        x: Math.max(0, Math.min(dispW - boxW, Math.round(cx - boxW / 2))),
-        y: Math.max(0, Math.min(dispH - boxH, Math.round(cy - boxH / 2))),
-        w: Math.round(boxW),
-        h: Math.round(boxH),
+        x: Math.max(0, Math.min(dispW - bw, Math.round(rawX - pad))),
+        y: Math.max(0, Math.min(dispH - bh, Math.round(rawY - pad))),
+        w: Math.round(bw),
+        h: Math.round(bh),
       };
     } else {
-      let boxW, boxH;
-      if (dispW / dispH > CROP_ASPECT) {
-        boxH = dispH;
-        boxW = boxH * CROP_ASPECT;
-      } else {
-        boxW = dispW;
-        boxH = boxW / CROP_ASPECT;
-      }
-      box = {
-        x: Math.round((dispW - boxW) / 2),
-        y: Math.round((dispH - boxH) / 2),
-        w: Math.round(boxW),
-        h: Math.round(boxH),
-      };
+      // ค่าเริ่มต้น: เต็มภาพเสมอ ไม่บังคับสัดส่วนใดๆ — แอดมินลากปรับเองได้ถ้าต้องการครอปแคบลง
+      box = { x: 0, y: 0, w: dispW, h: dispH };
     }
 
     cropCtx = { img, dispW, dispH, scale, box, editIndex, originalDataUrl, onConfirm: onConfirm || null, removeBg: !!removeBg };
@@ -396,17 +377,13 @@
     handle.addEventListener('mousedown', e => {
       e.preventDefault(); e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
-      const origW = box.w;
+      const origW = box.w, origH = box.h;
       function onMove(ev) {
-        const dx = ev.clientX - startX;
-        const dy = ev.clientY - startY;
-        // ใช้แกนที่ลากมากกว่าเป็นตัวขับขนาด แล้วคำนวณอีกด้านตามสัดส่วน 3:4 เสมอ
-        let newW = Math.max(24, origW + (Math.abs(dx) > Math.abs(dy) ? dx : dy * CROP_ASPECT));
-        newW = Math.min(newW, dispW - box.x);
-        let newH = newW / CROP_ASPECT;
-        if (box.y + newH > dispH) { newH = dispH - box.y; newW = newH * CROP_ASPECT; }
-        box.w = newW; box.h = newH;
-        div.style.width = newW + 'px'; div.style.height = newH + 'px';
+        const dx = ev.clientX - startX, dy = ev.clientY - startY;
+        // ปรับกว้าง/สูงอิสระต่อกัน ไม่บังคับสัดส่วนใดๆ
+        box.w = Math.max(24, Math.min(origW + dx, dispW - box.x));
+        box.h = Math.max(24, Math.min(origH + dy, dispH - box.y));
+        div.style.width = box.w + 'px'; div.style.height = box.h + 'px';
       }
       function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
       document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
@@ -420,8 +397,14 @@
     const { img, box, scale, editIndex, originalDataUrl, onConfirm, removeBg } = cropCtx;
     const sx = Math.round(box.x / scale), sy = Math.round(box.y / scale);
     const sw = Math.round(box.w / scale), sh = Math.round(box.h / scale);
+    // เอาต์พุตตามสัดส่วนของกรอบที่แอดมินเลือกเอง (ไม่บังคับสัดส่วนตายตัว) จำกัดด้านยาวสุดไว้ที่ 900px
+    const maxSide = 900;
+    const ratio = sw / sh;
+    let outW, outH;
+    if (ratio >= 1) { outW = maxSide; outH = Math.round(maxSide / ratio); }
+    else { outH = maxSide; outW = Math.round(maxSide * ratio); }
     const canvas = document.createElement('canvas');
-    canvas.width = 600; canvas.height = Math.round(600 / CROP_ASPECT);
+    canvas.width = outW; canvas.height = outH;
     canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     if (removeBg) removeBackgroundToWhiteInPlace(canvas);
     const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
@@ -519,18 +502,23 @@
   function renderMainImagesPreview() {
     const wrap = document.getElementById('mainImagesPreview');
     if (!wrap) return;
-    if (!pendingMainImages.length) { wrap.innerHTML = ''; return; }
-    wrap.innerHTML = `<p class="tag-muted" style="margin:14px 0 4px">ภาพหลักของสินค้า (ใช้เป็นภาพหน้าปกในหน้าร้าน)</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${pendingMainImages.map((m, i) => `
-          <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
-            <img src="${m.cropped}" alt="" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
-            <div style="display:flex;gap:4px">
-              <button class="btn btn-sm" data-edit-main="${i}" type="button">แก้ไข</button>
-              <button class="btn btn-sm btn-danger" data-remove-main="${i}" type="button">ลบ</button>
-            </div>
-          </div>
-        `).join('')}
+    const canAddMore = pendingMainImages.length < MAX_MAIN_IMAGES;
+    const thumbsHtml = pendingMainImages.map((m, i) => `
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
+        <img src="${m.cropped}" alt="" style="width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm" data-edit-main="${i}" type="button">แก้ไข</button>
+          <button class="btn btn-sm btn-danger" data-remove-main="${i}" type="button">ลบ</button>
+        </div>
+      </div>
+    `).join('');
+    const addBtnHtml = canAddMore
+      ? `<button class="btn" id="btnAddMoreImages" type="button" style="align-self:flex-start">+ เพิ่มรูป (${pendingMainImages.length}/${MAX_MAIN_IMAGES})</button>`
+      : `<span class="tag-muted" style="align-self:center">ครบ ${MAX_MAIN_IMAGES} รูปแล้ว</span>`;
+    wrap.innerHTML = `<p class="tag-muted" style="margin:14px 0 4px">ภาพหลักของสินค้า (ใช้เป็นภาพหน้าปกในหน้าร้าน — เพิ่มได้สูงสุด ${MAX_MAIN_IMAGES} รูป)</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">
+        ${thumbsHtml}
+        ${addBtnHtml}
       </div>`;
     wrap.querySelectorAll('[data-edit-main]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -547,22 +535,14 @@
         renderMainImagesPreview();
       });
     });
+    const addMoreBtn = document.getElementById('btnAddMoreImages');
+    if (addMoreBtn) addMoreBtn.addEventListener('click', () => document.getElementById('uploadInput').click());
   }
 
   function renderVariantList() {
     const wrap = document.getElementById('variantList');
     const listHtml = pendingVariants.map(v => `
       <div class="variant-card" data-tid="${v.tempId}">
-        <div style="display:flex;flex-direction:column;gap:6px;align-items:center">
-          ${v.images[0]
-            ? `<img src="${v.images[0]}" alt="">`
-            : `<div style="width:84px;height:84px;border-radius:8px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;text-align:center;padding:4px">ยังไม่มีรูป</div>`}
-          <label class="btn btn-sm" style="cursor:pointer;text-align:center">
-            ${v.images[0] ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}
-            <input type="file" accept="image/*" class="v-image-input" data-tid="${v.tempId}" style="display:none">
-          </label>
-          ${v.images[0] ? `<button class="btn btn-sm btn-danger" data-remove-image="${v.tempId}" type="button">ลบรูป</button>` : ''}
-        </div>
         <div class="variant-fields">
           <div class="field">
             <label>ชื่อสี</label>
@@ -578,7 +558,7 @@
     `).join('');
 
     wrap.innerHTML =
-      (pendingVariants.length ? `<p class="tag-muted" style="margin:14px 0 4px">เพิ่มรูปและตั้งชื่อสีเองสำหรับแต่ละตัวเลือก (1 ตัวเลือก = 1 สี) — อัปโหลดรูปแล้วจะมีหน้าต่างให้ปรับกรอบก่อนใช้จริงเหมือนภาพหลัก</p>` : '')
+      (pendingVariants.length ? `<p class="tag-muted" style="margin:14px 0 4px">ตั้งชื่อสีและจำนวนสต็อกสำหรับแต่ละตัวเลือก (1 ตัวเลือก = 1 สี) — ใช้ภาพหลักของสินค้าร่วมกันทุกสี ไม่ต้องอัปโหลดรูปแยกรายสี</p>` : '')
       + listHtml
       + `<button class="btn" id="btnAddVariantManual" type="button" style="margin-top:12px">+ เพิ่มตัวเลือกสี</button>`;
 
@@ -594,31 +574,6 @@
       btn.addEventListener('click', () => {
         pendingVariants = pendingVariants.filter(v => v.tempId !== btn.dataset.remove);
         renderVariantList();
-      });
-    });
-    wrap.querySelectorAll('[data-remove-image]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const v = pendingVariants.find(x => x.tempId === btn.dataset.removeImage);
-        if (v) { v.images = []; renderVariantList(); }
-      });
-    });
-    wrap.querySelectorAll('.v-image-input').forEach(inp => {
-      inp.addEventListener('change', () => {
-        const file = inp.files[0];
-        if (!file) return;
-        const tid = inp.dataset.tid;
-        ColorDetect.loadImageFromFile(file).then(({ dataUrl }) => {
-          const img = new Image();
-          img.onload = () => {
-            currentAiCropCtx = null;
-            openCropModalForImage(img, dataUrl, null, croppedDataUrl => {
-              const v = pendingVariants.find(x => x.tempId === tid);
-              if (v) { v.images = [croppedDataUrl]; renderVariantList(); }
-            });
-          };
-          img.src = dataUrl;
-        });
-        inp.value = '';
       });
     });
     const addBtn = document.getElementById('btnAddVariantManual');
