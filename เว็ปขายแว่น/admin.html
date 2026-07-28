@@ -54,7 +54,8 @@
 
     <!-- New product -->
     <section class="admin-view" id="view-newProduct">
-      <div class="admin-header"><h1>ลงสินค้าใหม่</h1></div>
+      <div class="admin-header"><h1 id="npFormTitle">ลงสินค้าใหม่</h1></div>
+      <div class="error-text" id="npEditingNotice" style="padding:0 0 10px;color:var(--accent)"></div>
       <div class="panel">
         <div class="form-grid">
           <div class="field"><label>รหัสสินค้า</label><input type="text" id="npCode" placeholder="สร้างอัตโนมัติถ้าเว้นว่าง"></div>
@@ -103,6 +104,7 @@
 
         <div class="error-text" id="npError"></div>
         <button class="btn btn-primary" style="margin-top:16px" id="btnSaveProduct">บันทึกสินค้า</button>
+        <button class="btn hidden" style="margin-top:16px" id="btnCancelEdit" type="button">ยกเลิกการแก้ไข</button>
       </div>
     </section>
 
@@ -206,7 +208,7 @@
     <button class="modal-close" data-close-modal="mainImageCropModal">✕</button>
     <div style="padding:26px">
       <h2 style="margin-top:0">ปรับกรอบรูปก่อนใช้งาน</h2>
-      <p class="tag-muted" style="margin:0 0 14px">ลากกรอบเพื่อจัดตำแหน่ง ลากมุมล่างขวาเพื่อปรับขนาด แล้วกดยืนยัน</p>
+      <p class="tag-muted" style="margin:0 0 14px">กรอบนี้ตัดตามสัดส่วน 3:4 เท่ากับที่จะแสดงในหน้าร้านเป๊ะๆ (ไม่มีการครอปซ้ำอีกรอบ) ลากกรอบเพื่อจัดตำแหน่ง ลากมุมล่างขวาเพื่อปรับขนาด แล้วกดยืนยัน</p>
       <div style="display:flex;justify-content:center">
         <div id="cropStage" style="position:relative;overflow:hidden;border-radius:12px;border:1px solid var(--border);background:var(--surface-2)"></div>
       </div>
