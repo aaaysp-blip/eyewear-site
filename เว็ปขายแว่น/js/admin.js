@@ -122,6 +122,8 @@
   // ================= New product form =================
   let pendingVariants = []; // { tempId, color, stock, images:[dataUrl] }
   let pendingMainImages = []; // [{ original: dataUrl, cropped: dataUrl }] — ภาพหน้าปกของสินค้าที่ครอปแล้ว
+  let editingProductId = null; // ถ้าไม่ใช่ null แปลว่ากำลังแก้ไขสินค้าเดิม ไม่ใช่ลงใหม่
+  let editingCreatedAt = null;
 
   function sizeFieldsHTML(cat) {
     if (cat === 'accessories') {
@@ -157,6 +159,7 @@
     });
 
     document.getElementById('btnSaveProduct').addEventListener('click', saveNewProduct);
+    document.getElementById('btnCancelEdit').addEventListener('click', resetProductForm);
     document.getElementById('btnAiReadImage').addEventListener('click', runAiReadFromImage);
 
     document.getElementById('btnCropCancel').addEventListener('click', () => {
@@ -286,6 +289,10 @@
     return canvas;
   }
 
+  // อัตราส่วนของกรอบครอป ให้ตรงกับสัดส่วนการ์ดสินค้าในหน้าร้าน (3:4 กว้าง:สูง)
+  // เพื่อไม่ให้ครอปซ้ำสองรอบ (ครอปในแอดมิน แล้วโดน object-fit:cover ตัดซ้ำอีกทีตอนแสดงผล)
+  const CROP_ASPECT = 3 / 4;
+
   function openCropModalForImage(img, originalDataUrl, editIndex, onConfirm, suggestedBoxPct, removeBg) {
     const stage = document.getElementById('cropStage');
     const maxW = 480;
@@ -299,28 +306,37 @@
 
     let box;
     if (suggestedBoxPct) {
-      // ครอปเป็นสี่เหลี่ยมจัตุรัสเสมอ (ตามที่เครื่องมือนี้ออกแบบไว้) แต่ให้จุดเริ่มต้นมาจากตำแหน่ง/ขนาดที่ AI เสนอ
-      // แทนที่จะเริ่มจากกึ่งกลางภาพเสมอ — แอดมินยังลาก/ปรับขนาดต่อได้ตามปกติก่อนกดยืนยัน
+      // ให้จุดเริ่มต้นมาจากตำแหน่ง/ขนาดที่ AI เสนอ แต่ยังคงสัดส่วน 3:4 ของกรอบครอป
+      // แอดมินยังลาก/ปรับขนาดต่อได้ตามปกติก่อนกดยืนยัน
       const rawX = (suggestedBoxPct.x / 100) * dispW;
       const rawY = (suggestedBoxPct.y / 100) * dispH;
       const rawW = (suggestedBoxPct.width / 100) * dispW;
       const rawH = (suggestedBoxPct.height / 100) * dispH;
       const cx = rawX + rawW / 2;
       const cy = rawY + rawH / 2;
-      const size = Math.max(24, Math.min(dispW, dispH, Math.max(rawW, rawH) * 1.15));
+      let boxH = Math.min(dispH, Math.max(rawW, rawH) * 1.15);
+      let boxW = boxH * CROP_ASPECT;
+      if (boxW > dispW) { boxW = dispW; boxH = boxW / CROP_ASPECT; }
       box = {
-        x: Math.max(0, Math.min(dispW - size, Math.round(cx - size / 2))),
-        y: Math.max(0, Math.min(dispH - size, Math.round(cy - size / 2))),
-        w: Math.round(size),
-        h: Math.round(size),
+        x: Math.max(0, Math.min(dispW - boxW, Math.round(cx - boxW / 2))),
+        y: Math.max(0, Math.min(dispH - boxH, Math.round(cy - boxH / 2))),
+        w: Math.round(boxW),
+        h: Math.round(boxH),
       };
     } else {
-      const boxSize = Math.min(dispW, dispH);
+      let boxW, boxH;
+      if (dispW / dispH > CROP_ASPECT) {
+        boxH = dispH;
+        boxW = boxH * CROP_ASPECT;
+      } else {
+        boxW = dispW;
+        boxH = boxW / CROP_ASPECT;
+      }
       box = {
-        x: Math.round((dispW - boxSize) / 2),
-        y: Math.round((dispH - boxSize) / 2),
-        w: boxSize,
-        h: boxSize,
+        x: Math.round((dispW - boxW) / 2),
+        y: Math.round((dispH - boxH) / 2),
+        w: Math.round(boxW),
+        h: Math.round(boxH),
       };
     }
 
@@ -357,12 +373,17 @@
     handle.addEventListener('mousedown', e => {
       e.preventDefault(); e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
-      const origW = box.w, origH = box.h;
+      const origW = box.w;
       function onMove(ev) {
-        const dx = ev.clientX - startX, dy = ev.clientY - startY;
-        const size = Math.max(24, Math.min(origW + dx, origH + dy, dispW - box.x, dispH - box.y));
-        box.w = size; box.h = size;
-        div.style.width = size + 'px'; div.style.height = size + 'px';
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        // ใช้แกนที่ลากมากกว่าเป็นตัวขับขนาด แล้วคำนวณอีกด้านตามสัดส่วน 3:4 เสมอ
+        let newW = Math.max(24, origW + (Math.abs(dx) > Math.abs(dy) ? dx : dy * CROP_ASPECT));
+        newW = Math.min(newW, dispW - box.x);
+        let newH = newW / CROP_ASPECT;
+        if (box.y + newH > dispH) { newH = dispH - box.y; newW = newH * CROP_ASPECT; }
+        box.w = newW; box.h = newH;
+        div.style.width = newW + 'px'; div.style.height = newH + 'px';
       }
       function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
       document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
@@ -377,8 +398,8 @@
     const sx = Math.round(box.x / scale), sy = Math.round(box.y / scale);
     const sw = Math.round(box.w / scale), sh = Math.round(box.h / scale);
     const canvas = document.createElement('canvas');
-    canvas.width = 600; canvas.height = 600;
-    canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, 600, 600);
+    canvas.width = 600; canvas.height = Math.round(600 / CROP_ASPECT);
+    canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     if (removeBg) removeBackgroundToWhiteInPlace(canvas);
     const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
 
@@ -630,12 +651,20 @@
     const product = {
       code, name, brand, category, price, ...sizeData,
       images: pendingMainImages.map(m => m.cropped),
-      variants: pendingVariants.map(v => ({ id: DB.uid('v'), color: v.color.trim() || 'สีมาตรฐาน', stock: v.stock, images: v.images })),
+      variants: pendingVariants.map(v => ({ id: v.existingId || DB.uid('v'), color: v.color.trim() || 'สีมาตรฐาน', stock: v.stock, images: v.images })),
     };
+    if (editingProductId) {
+      product.id = editingProductId;
+      product.createdAt = editingCreatedAt;
+    }
     DB.saveProduct(product);
-    showToast(`บันทึกสินค้า ${code} เรียบร้อย`);
+    showToast(editingProductId ? `บันทึกการแก้ไข ${code} เรียบร้อย` : `บันทึกสินค้า ${code} เรียบร้อย`);
+    resetProductForm();
+  }
 
-    // reset form
+  function resetProductForm() {
+    editingProductId = null;
+    editingCreatedAt = null;
     ['npCode', 'npName', 'npBrand', 'npPrice'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('npCode').placeholder = DB.generateNextCode();
     document.getElementById('npCategory').value = 'sunglasses';
@@ -645,7 +674,65 @@
     renderVariantList();
     renderMainImagesPreview();
     document.getElementById('aiReadStatus').textContent = '';
-    err.textContent = '';
+    document.getElementById('npError').textContent = '';
+    document.getElementById('npEditingNotice').textContent = '';
+    document.getElementById('npFormTitle').textContent = 'ลงสินค้าใหม่';
+    document.getElementById('btnSaveProduct').textContent = 'บันทึกสินค้า';
+    document.getElementById('btnCancelEdit').classList.add('hidden');
+  }
+
+  function editProduct(id) {
+    const p = DB.getProduct(id);
+    if (!p) return;
+    editingProductId = p.id;
+    editingCreatedAt = p.createdAt;
+
+    switchView('newProduct');
+
+    document.getElementById('npCode').value = p.code;
+    document.getElementById('npName').value = p.name;
+    document.getElementById('npBrand').value = p.brand;
+    document.getElementById('npCategory').value = p.category;
+    document.getElementById('npPrice').value = p.price;
+    document.getElementById('sizeFieldsWrap').innerHTML = sizeFieldsHTML(p.category);
+
+    if (p.category === 'accessories') {
+      const accWidthEl = document.getElementById('npAccWidth');
+      const accLengthEl = document.getElementById('npAccLength');
+      const materialEl = document.getElementById('npMaterial');
+      if (accWidthEl) accWidthEl.value = p.accWidth != null ? p.accWidth : '';
+      if (accLengthEl) accLengthEl.value = p.accLength != null ? p.accLength : '';
+      if (materialEl) materialEl.value = p.material || '';
+    } else {
+      const fwEl = document.getElementById('npFrameWidth');
+      const lwEl = document.getElementById('npLensWidth');
+      const lhEl = document.getElementById('npLensHeight');
+      const bwEl = document.getElementById('npBridgeWidth');
+      const tlEl = document.getElementById('npTempleLength');
+      if (fwEl) fwEl.value = p.frameWidth != null ? p.frameWidth : '';
+      if (lwEl) lwEl.value = p.lensWidth != null ? p.lensWidth : '';
+      if (lhEl) lhEl.value = p.lensHeight != null ? p.lensHeight : '';
+      if (bwEl) bwEl.value = p.bridgeWidth != null ? p.bridgeWidth : '';
+      if (tlEl) tlEl.value = p.templeLength != null ? p.templeLength : '';
+    }
+
+    pendingMainImages = (p.images || []).map(img => ({ original: img, cropped: img }));
+    pendingVariants = p.variants.map(v => ({
+      tempId: 'tmp_' + Math.random().toString(36).slice(2),
+      existingId: v.id,
+      color: v.color,
+      stock: v.stock,
+      images: v.images ? v.images.slice() : [],
+    }));
+
+    renderMainImagesPreview();
+    renderVariantList();
+
+    document.getElementById('npFormTitle').textContent = `แก้ไขสินค้า: ${p.code} · ${p.name}`;
+    document.getElementById('npEditingNotice').textContent = 'กำลังแก้ไขสินค้าที่มีอยู่แล้ว — บันทึกจะอัปเดตทับข้อมูลเดิม ไม่สร้างรายการใหม่';
+    document.getElementById('btnSaveProduct').textContent = 'บันทึกการแก้ไข';
+    document.getElementById('btnCancelEdit').classList.remove('hidden');
+    showToast('โหลดข้อมูลสินค้ามาแก้ไขแล้ว');
   }
 
   async function runAiReadFromImage() {
@@ -731,7 +818,10 @@
           <td>฿${p.price.toLocaleString()}</td>
           <td>${p.variants.length}</td>
           <td>${totalStock}</td>
-          <td><button class="btn btn-sm" data-view-product-btn="${p.id}" type="button">ดูรายละเอียด</button></td>
+          <td>
+            <button class="btn btn-sm" data-view-product-btn="${p.id}" type="button">ดูรายละเอียด</button>
+            <button class="btn btn-sm" data-edit-product-btn="${p.id}" type="button">แก้ไข</button>
+          </td>
         </tr>`);
     });
     document.getElementById('stockContent').innerHTML = `
@@ -753,6 +843,12 @@
         renderStock();
       });
     });
+    document.querySelectorAll('[data-edit-product-btn]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        editProduct(btn.dataset.editProductBtn);
+      });
+    });
   }
 
   function renderStockDetail(productId) {
@@ -760,6 +856,7 @@
     if (!p) { stockDetailProductId = null; renderStock(); return; }
     document.getElementById('stockContent').innerHTML = `
       <button class="btn btn-sm" id="btnStockBack" type="button" style="margin-bottom:14px">← กลับไปดูรายการสินค้า</button>
+      <button class="btn btn-sm" id="btnStockEdit" type="button" style="margin-bottom:14px">แก้ไขสินค้านี้</button>
       <h2 style="font-size:16px;margin-bottom:10px">${p.code} · ${escapeHtml(p.name)} <span class="tag-muted" style="font-weight:400">(${escapeHtml(p.brand)})</span></h2>
       <table>
         <thead><tr><th>สี</th><th>ราคา</th><th>สต็อก</th></tr></thead>
@@ -775,6 +872,7 @@
       stockDetailProductId = null;
       renderStock();
     });
+    document.getElementById('btnStockEdit').addEventListener('click', () => editProduct(p.id));
     document.querySelectorAll('.stock-input').forEach(inp => {
       inp.addEventListener('change', () => {
         DB.updateVariantStock(inp.dataset.pid, inp.dataset.vid, inp.value);
