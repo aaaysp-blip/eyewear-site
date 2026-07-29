@@ -47,7 +47,7 @@
   <div class="pagination" id="pagination"></div>
 </main>
 
-<footer class="site-footer">© OptiHub (ศูนย์รวมแว่นตา OH) — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="#" id="btnOpenReview">เขียนรีวิวร้านค้า</a> · <a href="admin.html">แอดมิน</a></footer>
+<footer class="site-footer">© OptiHub (ศูนย์รวมแว่นตา OH) — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="#" id="btnOpenReview">เขียนรีวิวร้านค้า</a> · <a href="#" id="btnOpenTracking">เช็คสถานะออเดอร์</a> · <a href="admin.html">แอดมิน</a></footer>
 
 <!-- ===== Filter Drawer ===== -->
 <div class="overlay" id="filterOverlay"></div>
@@ -143,6 +143,25 @@
       </div>
       <div class="error-text" id="reviewLookupMsg"></div>
       <div id="reviewableList" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Track Order ===== -->
+<div class="modal" id="trackingModal">
+  <div class="modal-backdrop" data-close-modal="trackingModal"></div>
+  <div class="modal-panel">
+    <button class="modal-close" data-close-modal="trackingModal">✕</button>
+    <div style="padding:26px">
+      <h2 style="margin-top:0">เช็คสถานะออเดอร์</h2>
+      <p class="tag-muted" style="margin:0 0 14px">กรอกเบอร์โทรและเลขที่ออเดอร์ที่ใช้ตอนสั่งซื้อ</p>
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:340px">
+        <input type="tel" id="trackPhoneInput" placeholder="เบอร์โทรที่ใช้ตอนสั่งซื้อ" maxlength="10">
+        <input type="text" id="trackOrderNoInput" placeholder="เลขที่ออเดอร์ เช่น OD12345678001">
+        <button class="btn btn-primary" id="btnTrackLookup" type="button">ตรวจสอบสถานะ</button>
+      </div>
+      <div class="error-text" id="trackLookupMsg"></div>
+      <div id="trackResult" style="margin-top:18px"></div>
     </div>
   </div>
 </div>
