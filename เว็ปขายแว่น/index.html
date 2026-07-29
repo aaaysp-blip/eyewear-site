@@ -19,6 +19,8 @@
       <input type="text" id="headerSearch" placeholder="ค้นหารหัส/ชื่อ/แบรนด์...">
     </div>
     <div class="topbar-actions">
+      <button class="btn" id="btnOpenTracking">เช็คสถานะออเดอร์</button>
+      <button class="btn" id="btnOpenReview">เขียนรีวิวร้านค้า</button>
       <button class="icon-btn" id="btnCart" title="ตะกร้า" aria-label="ตะกร้า">
         🛒<span class="badge-count hidden" id="cartCount">0</span>
       </button>
@@ -47,7 +49,7 @@
   <div class="pagination" id="pagination"></div>
 </main>
 
-<footer class="site-footer">© OptiHub (ศูนย์รวมแว่นตา OH) — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="#" id="btnOpenReview">เขียนรีวิวร้านค้า</a> · <a href="#" id="btnOpenTracking">เช็คสถานะออเดอร์</a> · <a href="admin.html">แอดมิน</a></footer>
+<footer class="site-footer">© OptiHub (ศูนย์รวมแว่นตา OH) — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="admin.html">แอดมิน</a></footer>
 
 <!-- ===== Filter Drawer ===== -->
 <div class="overlay" id="filterOverlay"></div>
@@ -154,14 +156,14 @@
     <button class="modal-close" data-close-modal="trackingModal">✕</button>
     <div style="padding:26px">
       <h2 style="margin-top:0">เช็คสถานะออเดอร์</h2>
-      <p class="tag-muted" style="margin:0 0 14px">กรอกเบอร์โทรและเลขที่ออเดอร์ที่ใช้ตอนสั่งซื้อ</p>
-      <div style="display:flex;flex-direction:column;gap:8px;max-width:340px">
+      <p class="tag-muted" style="margin:0 0 14px">กรอกเบอร์โทรที่ใช้ตอนสั่งซื้อ แล้วเลือกออเดอร์จากวันที่สั่ง</p>
+      <div style="display:flex;gap:8px;max-width:340px">
         <input type="tel" id="trackPhoneInput" placeholder="เบอร์โทรที่ใช้ตอนสั่งซื้อ" maxlength="10">
-        <input type="text" id="trackOrderNoInput" placeholder="เลขที่ออเดอร์ เช่น OD12345678001">
-        <button class="btn btn-primary" id="btnTrackLookup" type="button">ตรวจสอบสถานะ</button>
+        <button class="btn" id="btnTrackLookup" type="button">ค้นหา</button>
       </div>
       <div class="error-text" id="trackLookupMsg"></div>
-      <div id="trackResult" style="margin-top:18px"></div>
+      <div id="trackOrderList" style="margin-top:16px"></div>
+      <div id="trackResult" style="margin-top:16px"></div>
     </div>
   </div>
 </div>
