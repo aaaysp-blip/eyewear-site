@@ -15,6 +15,8 @@
     restocks: 'ew_restocks',
     seq: 'ew_seq',
     config: 'ew_config',
+    promotions: 'ew_promotions',
+    reviews: 'ew_reviews',
   };
 
   function read(key, fallback) {
@@ -144,6 +146,8 @@
     write(KEYS.orders, []);
     write(KEYS.customers, []);
     write(KEYS.restocks, []);
+    write(KEYS.promotions, []);
+    write(KEYS.reviews, []);
     if (!read(KEYS.config, null)) {
       write(KEYS.config, { promptpayId: '0000000000', lowStockThreshold: 2, adminPassword: 'admin1234' });
     }
@@ -209,15 +213,19 @@
   function getOrders() { return read(KEYS.orders, []); }
   function getOrder(id) { return getOrders().find(o => o.id === id) || null; }
 
-  function createOrder({ items, total, customer }) {
+  function createOrder({ items, subtotal, shippingFee, total, customer, paymentMethod, promoCode }) {
     const orders = getOrders();
     const orderNo = 'OD' + Date.now().toString().slice(-8) + String(orders.length + 1).padStart(3, '0');
     const order = {
       id: uid('o'),
       orderNo,
       items,
+      subtotal: subtotal != null ? subtotal : total,
+      shippingFee: shippingFee || 0,
       total,
       customer,
+      paymentMethod: paymentMethod || 'promptpay',
+      promoCode: promoCode || null,
       status: 1,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -235,6 +243,8 @@
       v.stock = Math.max(0, v.stock - item.qty);
     });
     write(KEYS.products, products);
+
+    if (promoCode) redeemPromotion(promoCode);
 
     upsertCustomerFromOrder(order);
     return order;
@@ -344,6 +354,139 @@
     return { orders, totalSpent, orderCount: orders.length };
   }
 
+  // ---------- Shipping ----------
+  // สมมติฐาน: แว่น/อุปกรณ์เสริม 1 หน่วย = 100 กรัม
+  const UNIT_WEIGHT_G = 100;
+  const SHIPPING_TIERS = [
+    { maxKg: 1, fee: 50 },
+    { maxKg: 2, fee: 60 },
+    { maxKg: 3, fee: 70 },
+    { maxKg: 4, fee: 80 },
+    { maxKg: 5, fee: 100 },
+    { maxKg: 10, fee: 150 },
+    { maxKg: 15, fee: 250 },
+    { maxKg: 20, fee: 350 },
+  ];
+  const COD_MAX_QTY = 20; // = 2kg พอดีตามเกณฑ์ที่กำหนด
+
+  function calcTotalWeightGrams(totalQty) { return totalQty * UNIT_WEIGHT_G; }
+
+  function calcShippingFee(totalQty) {
+    const kg = calcTotalWeightGrams(totalQty) / 1000;
+    for (const tier of SHIPPING_TIERS) {
+      if (kg <= tier.maxKg) return tier.fee;
+    }
+    return null; // เกิน 20kg — ต้องติดต่อร้านเพื่อสอบถามค่าส่งเอง ยังไม่มีเกณฑ์อัตโนมัติ
+  }
+
+  function isCodAvailable(totalQty) { return totalQty <= COD_MAX_QTY; }
+
+  // ---------- Promotions (คูปองส่งฟรี) ----------
+  function getPromotions() { return read(KEYS.promotions, []); }
+  function getPromotion(id) { return getPromotions().find(p => p.id === id) || null; }
+  function getPromotionByCode(code) {
+    const norm = String(code || '').trim().toUpperCase();
+    return getPromotions().find(p => p.code.toUpperCase() === norm) || null;
+  }
+
+  function createPromotion({ code, maxUses }) {
+    const promos = getPromotions();
+    const promo = {
+      id: uid('promo'),
+      code: String(code).trim(),
+      maxUses: Math.max(1, parseInt(maxUses, 10) || 1),
+      timesApplied: 0,
+      timesRedeemed: 0,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    promos.unshift(promo);
+    write(KEYS.promotions, promos);
+    return promo;
+  }
+
+  function setPromotionActive(id, active) {
+    const promos = getPromotions();
+    const p = promos.find(x => x.id === id);
+    if (!p) return;
+    p.active = !!active;
+    write(KEYS.promotions, promos);
+  }
+
+  function deletePromotion(id) {
+    write(KEYS.promotions, getPromotions().filter(p => p.id !== id));
+  }
+
+  // เรียกตอนลูกค้ากรอกโค้ดแล้วระบบตรวจสอบผ่าน (นับเป็น "เก็บ/ใช้โค้ดในตะกร้า" แม้ยังไม่กดยืนยันคำสั่งซื้อ)
+  function applyPromotion(code) {
+    const promo = getPromotionByCode(code);
+    if (!promo) return { ok: false, reason: 'notfound' };
+    if (!promo.active) return { ok: false, reason: 'inactive' };
+    if (promo.timesRedeemed >= promo.maxUses) return { ok: false, reason: 'exhausted' };
+    const promos = getPromotions();
+    const p = promos.find(x => x.id === promo.id);
+    p.timesApplied += 1;
+    write(KEYS.promotions, promos);
+    return { ok: true, promotion: p };
+  }
+
+  // เรียกตอนคำสั่งซื้อสำเร็จจริง (นับเป็น "ใช้จริง")
+  function redeemPromotion(code) {
+    const promo = getPromotionByCode(code);
+    if (!promo) return;
+    const promos = getPromotions();
+    const p = promos.find(x => x.id === promo.id);
+    if (!p) return;
+    p.timesRedeemed += 1;
+    write(KEYS.promotions, promos);
+  }
+
+  // ---------- Reviews (รีวิว + ให้ดาว เฉพาะลูกค้าที่เคยสั่งซื้อจริง) ----------
+  function getReviews() { return read(KEYS.reviews, []); }
+  function getReviewsForProduct(productId) { return getReviews().filter(r => r.productId === productId); }
+
+  function getProductRatingSummary(productId) {
+    const reviews = getReviewsForProduct(productId);
+    if (!reviews.length) return { count: 0, average: 0 };
+    const sum = reviews.reduce((s, r) => s + r.rating, 0);
+    return { count: reviews.length, average: Math.round((sum / reviews.length) * 10) / 10 };
+  }
+
+  // หาออเดอร์ของเบอร์นี้ที่ "จัดส่งแล้ว" และยังไม่เคยรีวิวสินค้าชิ้นนั้นในออเดอร์นั้น
+  function getReviewableItemsForPhone(phone) {
+    const reviews = getReviews();
+    const orders = getOrders().filter(o => o.customer.phone === phone && o.status === 4);
+    const out = [];
+    orders.forEach(o => {
+      o.items.forEach(item => {
+        const already = reviews.some(r => r.orderId === o.id && r.productId === item.productId && r.variantId === item.variantId);
+        if (already) return;
+        let image = item.image;
+        if (!image) {
+          const p = getProduct(item.productId);
+          if (p && p.images && p.images[0]) image = p.images[0];
+        }
+        out.push({ orderId: o.id, orderNo: o.orderNo, ...item, image });
+      });
+    });
+    return out;
+  }
+
+  function submitReview({ productId, variantId, orderId, phone, customerName, rating, comment }) {
+    const reviews = getReviews();
+    const review = {
+      id: uid('rev'),
+      productId, variantId, orderId, phone,
+      customerName: customerName || 'ลูกค้า',
+      rating: Math.max(1, Math.min(5, Math.round(Number(rating) || 5))),
+      comment: (comment || '').trim(),
+      createdAt: new Date().toISOString(),
+    };
+    reviews.unshift(review);
+    write(KEYS.reviews, reviews);
+    return review;
+  }
+
   // ---------- Config ----------
   function getConfig() { return read(KEYS.config, { promptpayId: '0000000000', lowStockThreshold: 2, adminPassword: 'admin1234' }); }
   function setConfig(cfg) { write(KEYS.config, Object.assign(getConfig(), cfg)); }
@@ -392,6 +535,9 @@
     getCustomers, getCustomerByPhone, getCustomerStats,
     getConfig, setConfig,
     monthSales, pendingOrderCount, bestSellers, lowStockVariants,
+    calcTotalWeightGrams, calcShippingFee, isCodAvailable, UNIT_WEIGHT_G, COD_MAX_QTY,
+    getPromotions, getPromotion, getPromotionByCode, createPromotion, setPromotionActive, deletePromotion, applyPromotion, redeemPromotion,
+    getReviews, getReviewsForProduct, getProductRatingSummary, getReviewableItemsForPhone, submitReview,
     uid,
   };
 })(window);

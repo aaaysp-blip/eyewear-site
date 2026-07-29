@@ -158,6 +158,17 @@
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  function starsString(rating) {
+    const r = Math.max(0, Math.min(5, Math.round(rating || 0)));
+    return '★'.repeat(r) + '☆'.repeat(5 - r);
+  }
+
+  function maskReviewerName(name) {
+    const n = String(name || 'ลูกค้า').trim();
+    if (n.length <= 2) return n + '***';
+    return n.slice(0, 2) + '***';
+  }
+
   // ---------------- Tabs ----------------
   document.getElementById('tabs').addEventListener('click', e => {
     const btn = e.target.closest('.tab-btn');
@@ -174,6 +185,8 @@
   const filterDrawer = document.getElementById('filterDrawer');
   function openFilter() {
     populateBrandOptions();
+    const fSearchEl = document.getElementById('fSearch');
+    if (fSearchEl) fSearchEl.value = state.filters.search || '';
     filterOverlay.classList.add('show');
     filterDrawer.classList.add('show');
   }
@@ -218,6 +231,18 @@
     document.getElementById('fBrand').value = '';
   });
 
+  const headerSearchEl = document.getElementById('headerSearch');
+  if (headerSearchEl) {
+    headerSearchEl.addEventListener('input', () => {
+      state.filters.search = headerSearchEl.value;
+      const drawerSearch = document.getElementById('fSearch');
+      if (drawerSearch) drawerSearch.value = headerSearchEl.value;
+      state.page = 1;
+      updateFilterBadge();
+      renderGrid();
+    });
+  }
+
   // ---------------- Product popup ----------------
   const productModal = document.getElementById('productModal');
   let popupState = { product: null, variant: null, qty: 1 };
@@ -251,12 +276,20 @@
       if (p.templeLength) specParts.push(`<div class="spec-item"><div class="val">${p.templeLength}</div><div class="lbl">ความยาวขาแว่น (มม.)</div></div>`);
     }
 
+    const ratingSummary = DB.getProductRatingSummary(p.id);
+    const productReviews = DB.getReviewsForProduct(p.id).slice(0, 8);
+
     document.getElementById('productPopupBody').innerHTML = `
       <div class="popup-media"><img src="${img}" alt="" id="popupMediaImg"><span class="popup-zoom-hint">🔍 แตะเพื่อซูม</span></div>
       <div class="popup-info">
         <div class="popup-code">${p.code}</div>
         <div class="popup-name">${escapeHtml(p.name)}</div>
         <div class="popup-brand">${escapeHtml(p.brand)}</div>
+        <div class="rating-summary">
+          <span class="star-rating">${starsString(ratingSummary.average)}</span>
+          <span class="avg">${ratingSummary.count ? ratingSummary.average.toFixed(1) : '-'}</span>
+          <span class="tag-muted">(${ratingSummary.count} รีวิว)</span>
+        </div>
         ${specParts.length ? `<div class="spec-grid">${specParts.join('')}</div>` : ''}
         ${p.variants.length > 1 ? `<div class="field"><label>เลือกสี</label><div class="swatches" id="popupSwatches">${swatches}</div></div>` : ''}
         <div class="field">
@@ -276,6 +309,19 @@
         <button class="btn btn-primary btn-block" id="btnAddCart" ${!v || v.stock === 0 || qty < 1 ? 'disabled' : ''}>
           ${!v || v.stock === 0 ? 'หมดสต็อก' : 'ใส่ตะกร้า'}
         </button>
+        <div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px">รีวิวจากลูกค้า</div>
+          ${productReviews.length ? `<div class="review-list">${productReviews.map(r => `
+            <div class="review-item">
+              <div class="rhead">
+                <span class="rname">${escapeHtml(maskReviewerName(r.customerName))}</span>
+                <span class="star-rating">${starsString(r.rating)}</span>
+              </div>
+              ${r.comment ? `<div>${escapeHtml(r.comment)}</div>` : ''}
+              <div class="rdate">${new Date(r.createdAt).toLocaleDateString('th-TH')}</div>
+            </div>
+          `).join('')}</div>` : `<div class="tag-muted" style="font-size:12.5px">ยังไม่มีรีวิวสำหรับสินค้านี้</div>`}
+        </div>
       </div>
     `;
 
@@ -387,6 +433,93 @@
     el.addEventListener('click', () => setZoom(1));
   });
 
+  // ---------------- Write a review ----------------
+  const reviewModal = document.getElementById('reviewModal');
+  document.getElementById('btnOpenReview').addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('reviewPhoneInput').value = '';
+    document.getElementById('reviewLookupMsg').textContent = '';
+    document.getElementById('reviewableList').innerHTML = '';
+    reviewModal.classList.add('show');
+  });
+
+  document.getElementById('btnReviewLookup').addEventListener('click', () => {
+    const phone = document.getElementById('reviewPhoneInput').value.trim();
+    const msg = document.getElementById('reviewLookupMsg');
+    const listWrap = document.getElementById('reviewableList');
+    if (!/^0\d{8,9}$/.test(phone)) {
+      msg.textContent = 'กรุณากรอกเบอร์โทรให้ถูกต้อง';
+      listWrap.innerHTML = '';
+      return;
+    }
+    msg.textContent = '';
+    const items = DB.getReviewableItemsForPhone(phone);
+    renderReviewableList(items, phone);
+  });
+
+  function renderReviewableList(items, phone) {
+    const listWrap = document.getElementById('reviewableList');
+    if (!items.length) {
+      listWrap.innerHTML = `<div class="tag-muted">ไม่พบสินค้าที่จัดส่งแล้วและยังไม่เคยรีวิวสำหรับเบอร์นี้</div>`;
+      return;
+    }
+    listWrap.innerHTML = items.map((it, idx) => `
+      <div class="reviewable-card" data-idx="${idx}">
+        <div class="rp-head">
+          <img src="${it.image || ''}" alt="">
+          <div>
+            <div style="font-weight:600">${escapeHtml(it.name)} <span class="tag-muted">(${escapeHtml(it.color)})</span></div>
+            <div class="tag-muted" style="font-size:11.5px">ออเดอร์ ${it.orderNo}</div>
+          </div>
+        </div>
+        <div class="field"><label>ให้คะแนน</label>
+          <div class="star-picker" data-idx="${idx}">
+            ${[1, 2, 3, 4, 5].map(n => `<span data-star="${n}">★</span>`).join('')}
+          </div>
+        </div>
+        <textarea placeholder="เล่าความรู้สึกกับสินค้านี้ (ไม่บังคับ)" data-idx="${idx}"></textarea>
+        <div class="error-text" data-idx="${idx}"></div>
+        <button class="btn btn-primary btn-sm" data-submit-review="${idx}" type="button" style="margin-top:8px">ส่งรีวิว</button>
+      </div>
+    `).join('');
+
+    const ratings = items.map(() => 0);
+
+    listWrap.querySelectorAll('.star-picker').forEach(picker => {
+      const idx = Number(picker.dataset.idx);
+      const spans = picker.querySelectorAll('span');
+      function paint(n) { spans.forEach(s => s.classList.toggle('on', Number(s.dataset.star) <= n)); }
+      spans.forEach(s => {
+        s.addEventListener('click', () => { ratings[idx] = Number(s.dataset.star); paint(ratings[idx]); });
+        s.addEventListener('mouseenter', () => paint(Number(s.dataset.star)));
+      });
+      picker.addEventListener('mouseleave', () => paint(ratings[idx]));
+    });
+
+    listWrap.querySelectorAll('[data-submit-review]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.submitReview);
+        const item = items[idx];
+        const card = listWrap.querySelector(`.reviewable-card[data-idx="${idx}"]`);
+        const errEl = card.querySelector('.error-text');
+        const rating = ratings[idx];
+        if (!rating) { errEl.textContent = 'กรุณาเลือกจำนวนดาว'; return; }
+        const comment = card.querySelector('textarea').value.trim();
+        const cfg = DB.getCustomerByPhone(phone);
+        DB.submitReview({
+          productId: item.productId,
+          variantId: item.variantId,
+          orderId: item.orderId,
+          phone,
+          customerName: (cfg && cfg.name) || 'ลูกค้า',
+          rating,
+          comment,
+        });
+        card.innerHTML = `<div class="tag-muted">ส่งรีวิวเรียบร้อย ขอบคุณค่ะ/ครับ 🙏</div>`;
+      });
+    });
+  }
+
   // ---------------- Modal close (generic) ----------------
   document.querySelectorAll('[data-close-modal]').forEach(el => {
     el.addEventListener('click', () => {
@@ -398,6 +531,8 @@
   const cartModal = document.getElementById('cartModal');
   let checkoutStep = 1;
   let lastOrder = null;
+  let checkoutPromo = null;
+  let checkoutPaymentMethod = 'promptpay';
 
   function renderCartCount() {
     const cart = getCart();
@@ -409,6 +544,8 @@
 
   document.getElementById('btnCart').addEventListener('click', () => {
     checkoutStep = 1;
+    checkoutPromo = null;
+    checkoutPaymentMethod = 'promptpay';
     renderCheckout();
     cartModal.classList.add('show');
   });
@@ -422,6 +559,8 @@
   }
 
   function cartTotal(cart) { return cart.reduce((s, i) => s + i.price * i.qty, 0); }
+  function cartTotalQty(cart) { return cart.reduce((s, i) => s + i.qty, 0); }
+  function currentShippingFee(cart) { return checkoutPromo ? 0 : DB.calcShippingFee(cartTotalQty(cart)); }
 
   function renderCheckout() {
     setStepUI(checkoutStep);
@@ -433,6 +572,14 @@
         body.innerHTML = `<div class="empty-state"><div class="big">🛒</div>ยังไม่มีสินค้าในตะกร้า</div>`;
         return;
       }
+      const subtotal = cartTotal(cart);
+      const totalQty = cartTotalQty(cart);
+      const shippingFee = currentShippingFee(cart);
+      const grandTotal = subtotal + (shippingFee || 0);
+      const codOk = DB.isCodAvailable(totalQty);
+      if (!codOk && checkoutPaymentMethod === 'cod') checkoutPaymentMethod = 'promptpay';
+      const overLimit = shippingFee == null;
+
       body.innerHTML = `
         ${cart.map((it, idx) => `
           <div class="cart-row">
@@ -449,8 +596,40 @@
             <button class="btn btn-sm btn-danger" data-act="remove" data-idx="${idx}" type="button">ลบ</button>
           </div>
         `).join('')}
-        <div class="cart-summary-total"><span>ยอดรวม</span><span>฿${cartTotal(cart).toLocaleString()}</span></div>
-        <button class="btn btn-primary btn-block" id="btnGoPayment">สร้าง QR พร้อมเพย์</button>
+
+        <div class="field" style="margin-top:14px;max-width:340px">
+          <label>คูปองส่งฟรี (ถ้ามี)</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="promoInput" placeholder="กรอกโค้ด" value="${checkoutPromo ? checkoutPromo.code : ''}" ${checkoutPromo ? 'disabled' : ''}>
+            ${checkoutPromo
+              ? `<button class="btn btn-sm btn-danger" id="btnRemovePromo" type="button">ยกเลิก</button>`
+              : `<button class="btn btn-sm" id="btnApplyPromo" type="button">ใช้คูปอง</button>`}
+          </div>
+          <div class="error-text" id="promoMsg">${checkoutPromo ? 'ใช้คูปองส่งฟรีแล้ว ✓' : ''}</div>
+        </div>
+
+        <div class="cart-summary-total" style="flex-direction:column;align-items:stretch;gap:5px">
+          <div style="display:flex;justify-content:space-between"><span>ยอดสินค้า</span><span>฿${subtotal.toLocaleString()}</span></div>
+          <div style="display:flex;justify-content:space-between">
+            <span>ค่าจัดส่ง (${(totalQty * DB.UNIT_WEIGHT_G / 1000).toFixed(1)} กก.)</span>
+            <span>${overLimit ? 'ติดต่อร้าน' : (shippingFee === 0 ? 'ฟรี' : '฿' + shippingFee.toLocaleString())}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-weight:700;font-size:16px;border-top:1px solid var(--border);padding-top:6px">
+            <span>ยอดรวมทั้งหมด</span><span>฿${overLimit ? subtotal.toLocaleString() + ' +ค่าส่ง' : grandTotal.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:14px">
+          <label>วิธีชำระเงิน</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="radio" name="payMethod" value="promptpay" ${checkoutPaymentMethod === 'promptpay' ? 'checked' : ''}> พร้อมเพย์ (สแกน QR)</label>
+            <label style="display:flex;gap:6px;align-items:center;font-weight:400;${codOk ? '' : 'opacity:.5'}"><input type="radio" name="payMethod" value="cod" ${checkoutPaymentMethod === 'cod' ? 'checked' : ''} ${codOk ? '' : 'disabled'}> เก็บเงินปลายทาง</label>
+          </div>
+          ${!codOk ? `<div class="tag-muted" style="margin-top:4px">เก็บเงินปลายทางให้บริการเฉพาะคำสั่งซื้อไม่เกิน ${DB.COD_MAX_QTY} ชิ้น (2 กก.) คำสั่งซื้อนี้เกินกำหนด จึงรองรับเฉพาะพร้อมเพย์</div>` : ''}
+        </div>
+
+        ${overLimit ? `<div class="error-text">น้ำหนักรวมเกิน 20 กก. ระบบยังไม่มีเกณฑ์ค่าส่งอัตโนมัติ กรุณาติดต่อร้านโดยตรงเพื่อสอบถามค่าจัดส่งก่อนสั่งซื้อ</div>` : ''}
+        <button class="btn btn-primary btn-block" id="btnGoPayment" style="margin-top:10px" ${overLimit ? 'disabled' : ''}>ถัดไป</button>
       `;
       body.querySelectorAll('[data-act]').forEach(el => {
         el.addEventListener('click', () => {
@@ -472,20 +651,60 @@
           });
         }
       });
+      const applyPromoBtn = document.getElementById('btnApplyPromo');
+      if (applyPromoBtn) applyPromoBtn.addEventListener('click', () => {
+        const code = document.getElementById('promoInput').value.trim();
+        const msg = document.getElementById('promoMsg');
+        if (!code) { msg.textContent = 'กรุณากรอกโค้ด'; return; }
+        const result = DB.applyPromotion(code);
+        if (!result.ok) {
+          msg.textContent = result.reason === 'notfound' ? 'ไม่พบโค้ดนี้'
+            : result.reason === 'exhausted' ? 'โค้ดนี้ถูกใช้ครบจำนวนแล้ว'
+            : 'โค้ดนี้ไม่สามารถใช้ได้แล้ว';
+          return;
+        }
+        checkoutPromo = result.promotion;
+        renderCheckout();
+      });
+      const removePromoBtn = document.getElementById('btnRemovePromo');
+      if (removePromoBtn) removePromoBtn.addEventListener('click', () => { checkoutPromo = null; renderCheckout(); });
+      body.querySelectorAll('input[name="payMethod"]').forEach(r => {
+        r.addEventListener('change', e => { checkoutPaymentMethod = e.target.value; renderCheckout(); });
+      });
       const goBtn = document.getElementById('btnGoPayment');
       if (goBtn) goBtn.addEventListener('click', () => { checkoutStep = 2; renderCheckout(); });
       return;
     }
 
     if (checkoutStep === 2) {
-      const total = cartTotal(cart);
+      const subtotal = cartTotal(cart);
+      const shippingFee = currentShippingFee(cart) || 0;
+      const grandTotal = subtotal + shippingFee;
+
+      if (checkoutPaymentMethod === 'cod') {
+        body.innerHTML = `
+          <div class="qr-box">
+            <div style="font-size:40px">📦</div>
+            <div class="qr-amount">฿${grandTotal.toLocaleString()}</div>
+            <div class="qr-hint">ชำระเงินปลายทางกับพนักงานจัดส่งเมื่อได้รับสินค้า<br>(รวมค่าจัดส่ง ฿${shippingFee.toLocaleString()} แล้ว)</div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:14px;">
+            <button class="btn" id="btnBack1">‹ กลับ</button>
+            <button class="btn btn-primary btn-block" id="btnGoAddress">ถัดไป: กรอกที่อยู่จัดส่ง</button>
+          </div>
+        `;
+        document.getElementById('btnBack1').addEventListener('click', () => { checkoutStep = 1; renderCheckout(); });
+        document.getElementById('btnGoAddress').addEventListener('click', () => { checkoutStep = 3; renderCheckout(); });
+        return;
+      }
+
       const cfg = DB.getConfig();
-      const payload = PromptPay.generatePayload(cfg.promptpayId, total);
+      const payload = PromptPay.generatePayload(cfg.promptpayId, grandTotal);
       body.innerHTML = `
         <div class="qr-box">
           <div id="qrHolder" style="display:inline-block;background:#fff;padding:16px;border-radius:12px;border:1px solid var(--border)"></div>
-          <div class="qr-amount">฿${total.toLocaleString()}</div>
-          <div class="qr-hint">สแกนจ่ายผ่านแอปธนาคารใดก็ได้ (PromptPay)<br>แอดมินจะตรวจสอบสลิปการโอนของท่านหลังยืนยันคำสั่งซื้อ</div>
+          <div class="qr-amount">฿${grandTotal.toLocaleString()}</div>
+          <div class="qr-hint">สแกนจ่ายผ่านแอปธนาคารใดก็ได้ (PromptPay) — ยอดนี้รวมค่าจัดส่ง ฿${shippingFee.toLocaleString()} แล้ว<br>แอดมินจะตรวจสอบสลิปการโอนของท่านหลังยืนยันคำสั่งซื้อ</div>
         </div>
         <div style="display:flex;gap:10px;margin-top:14px;">
           <button class="btn" id="btnBack1">‹ กลับ</button>
@@ -525,12 +744,15 @@
     }
 
     if (checkoutStep === 4) {
+      const codMsg = lastOrder && lastOrder.paymentMethod === 'cod'
+        ? 'เตรียมเงินสดไว้ชำระกับพนักงานจัดส่งเมื่อสินค้าถึง'
+        : 'แอดมินจะตรวจสอบสลิปและติดต่อกลับเพื่อยืนยันเบอร์โทร/ที่อยู่';
       body.innerHTML = `
         <div class="order-done">
           <div class="ok-icon">✅</div>
           <div>สั่งซื้อสำเร็จ ขอบคุณที่อุดหนุนค่ะ/ครับ</div>
           <div class="order-no">เลขที่ออเดอร์ ${lastOrder ? lastOrder.orderNo : ''}</div>
-          <div class="tag-muted">แอดมินจะตรวจสอบสลิปและติดต่อกลับเพื่อยืนยันเบอร์โทร/ที่อยู่</div>
+          <div class="tag-muted">${codMsg}</div>
           <button class="btn btn-primary" style="margin-top:18px" id="btnCloseDone">ปิดหน้าต่าง</button>
         </div>
       `;
@@ -568,13 +790,21 @@
 
     const cart = getCart();
     if (!cart.length) return;
-    const total = cartTotal(cart);
+    const subtotal = cartTotal(cart);
+    const shippingFee = currentShippingFee(cart) || 0;
+    const total = subtotal + shippingFee;
     lastOrder = DB.createOrder({
       items: cart,
+      subtotal,
+      shippingFee,
       total,
       customer: { name, phone, lineId, address, subdistrict, district, province, zipcode },
+      paymentMethod: checkoutPaymentMethod,
+      promoCode: checkoutPromo ? checkoutPromo.code : null,
     });
     setCart([]);
+    checkoutPromo = null;
+    checkoutPaymentMethod = 'promptpay';
     checkoutStep = 4;
     renderCheckout();
     renderGrid();

@@ -66,6 +66,7 @@
       setupNewProductForm();
       setupSettings();
       setupRestockActions();
+      setupPromotions();
     }
     switchView('dashboard');
   }
@@ -78,6 +79,7 @@
     if (view === 'restock') renderRestockView();
     if (view === 'orders') renderOrders();
     if (view === 'crm') renderCrm();
+    if (view === 'promotions') renderPromotions();
     if (view === 'newProduct') {
       document.getElementById('npCode').placeholder = DB.generateNextCode();
       renderMainImagesPreview();
@@ -1149,10 +1151,17 @@
             <div><strong>เบอร์โทร:</strong> ${escapeHtml(o.customer.phone)}</div>
             <div><strong>LINE ID:</strong> ${escapeHtml(o.customer.lineId || '-')}</div>
             <div><strong>รหัสไปรษณีย์:</strong> ${escapeHtml(o.customer.zipcode)}</div>
+            <div><strong>ชำระเงิน:</strong> ${o.paymentMethod === 'cod' ? 'เก็บเงินปลายทาง (COD)' : 'พร้อมเพย์'}</div>
+            <div><strong>คูปอง:</strong> ${o.promoCode ? escapeHtml(o.promoCode) : '-'}</div>
             <div class="span2" style="grid-column:1/-1"><strong>ที่อยู่:</strong> ${escapeHtml(o.customer.address)} ต.${escapeHtml(o.customer.subdistrict)} อ.${escapeHtml(o.customer.district)} จ.${escapeHtml(o.customer.province)} ${escapeHtml(o.customer.zipcode)}</div>
           </div>
           <table><thead><tr><th>สินค้า</th><th>สี</th><th>จำนวน</th><th>ราคา</th></tr></thead>
           <tbody>${o.items.map(it => `<tr><td>${it.code} ${escapeHtml(it.name)}</td><td>${escapeHtml(it.color)}</td><td>${it.qty}</td><td>฿${(it.price * it.qty).toLocaleString()}</td></tr>`).join('')}</tbody></table>
+          <div style="text-align:right;font-size:13px;margin-top:8px;color:var(--text-muted)">
+            ยอดสินค้า ฿${(o.subtotal != null ? o.subtotal : o.total).toLocaleString()}
+            · ค่าส่ง ${o.shippingFee ? '฿' + o.shippingFee.toLocaleString() : 'ฟรี'}
+            · รวม <strong style="color:var(--text)">฿${o.total.toLocaleString()}</strong>
+          </div>
           <div class="order-actions" style="margin-top:14px">
             ${o.status < 4 ? `<button class="btn btn-primary" data-advance="${o.id}">${NEXT_LABEL[o.status]}</button>` : `<span class="status-pill status-4">จัดส่งเรียบร้อยแล้ว</span>`}
           </div>
@@ -1205,6 +1214,61 @@
       row.addEventListener('click', () => {
         document.getElementById(row.dataset.toggle).classList.toggle('show');
       });
+    });
+  }
+
+  // ================= Promotions (coupon codes) =================
+  function renderPromotions() {
+    const promos = DB.getPromotions();
+    const wrap = document.getElementById('promoBody');
+    if (!promos.length) {
+      wrap.innerHTML = `<tr><td colspan="6" class="tag-muted">ยังไม่มีโค้ดโปรโมชั่น</td></tr>`;
+      return;
+    }
+    wrap.innerHTML = promos.map(p => `
+      <tr>
+        <td><strong>${escapeHtml(p.code)}</strong></td>
+        <td>${p.maxUses}</td>
+        <td>${p.timesApplied}</td>
+        <td>${p.timesRedeemed} / ${p.maxUses}</td>
+        <td>${p.active ? '<span class="status-pill status-3">ใช้งานอยู่</span>' : '<span class="status-pill status-1">ปิดใช้งาน</span>'}</td>
+        <td>
+          <button class="btn btn-sm" data-toggle-promo="${p.id}" data-active="${p.active ? '0' : '1'}" type="button">${p.active ? 'ปิด' : 'เปิด'}</button>
+          <button class="btn btn-sm btn-danger" data-delete-promo="${p.id}" type="button">ลบ</button>
+        </td>
+      </tr>
+    `).join('');
+    wrap.querySelectorAll('[data-toggle-promo]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        DB.setPromotionActive(btn.dataset.togglePromo, btn.dataset.active === '1');
+        renderPromotions();
+      });
+    });
+    wrap.querySelectorAll('[data-delete-promo]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!confirm('ลบโค้ดนี้แน่ใจไหม? กู้คืนไม่ได้')) return;
+        DB.deletePromotion(btn.dataset.deletePromo);
+        renderPromotions();
+      });
+    });
+  }
+
+  function setupPromotions() {
+    document.getElementById('btnCreatePromo').addEventListener('click', () => {
+      const codeEl = document.getElementById('promoCode');
+      const maxUsesEl = document.getElementById('promoMaxUses');
+      const err = document.getElementById('promoFormError');
+      const code = codeEl.value.trim().toUpperCase();
+      const maxUses = parseInt(maxUsesEl.value, 10);
+      if (!code) { err.textContent = 'กรุณากรอกชื่อโค้ด'; return; }
+      if (DB.getPromotionByCode(code)) { err.textContent = 'มีโค้ดนี้อยู่แล้ว กรุณาใช้ชื่ออื่น'; return; }
+      if (!maxUses || maxUses < 1) { err.textContent = 'กรุณากรอกจำนวนสิทธิ์ให้ถูกต้อง'; return; }
+      err.textContent = '';
+      DB.createPromotion({ code, maxUses });
+      codeEl.value = '';
+      maxUsesEl.value = 50;
+      showToast(`สร้างโค้ด ${code} เรียบร้อย`);
+      renderPromotions();
     });
   }
 
