@@ -11,6 +11,9 @@
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand">แว่นตา<small>OPTICAL STORE</small></div>
+    <div class="topbar-search">
+      <input type="text" id="headerSearch" placeholder="ค้นหารหัส/ชื่อ/แบรนด์...">
+    </div>
     <div class="topbar-actions">
       <button class="icon-btn" id="btnCart" title="ตะกร้า" aria-label="ตะกร้า">
         🛒<span class="badge-count hidden" id="cartCount">0</span>
@@ -40,7 +43,7 @@
   <div class="pagination" id="pagination"></div>
 </main>
 
-<footer class="site-footer">© ร้านแว่นตา — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="admin.html">แอดมิน</a></footer>
+<footer class="site-footer">© ร้านแว่นตา — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="#" id="btnOpenReview">เขียนรีวิวสินค้าที่เคยสั่งซื้อ</a> · <a href="admin.html">แอดมิน</a></footer>
 
 <!-- ===== Filter Drawer ===== -->
 <div class="overlay" id="filterOverlay"></div>
@@ -118,6 +121,24 @@
       <button type="button" id="zoomOut">−</button>
       <button type="button" id="zoomReset">รีเซ็ต</button>
       <button type="button" id="zoomIn">+</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Write a Review ===== -->
+<div class="modal" id="reviewModal">
+  <div class="modal-backdrop" data-close-modal="reviewModal"></div>
+  <div class="modal-panel">
+    <button class="modal-close" data-close-modal="reviewModal">✕</button>
+    <div style="padding:26px">
+      <h2 style="margin-top:0">เขียนรีวิวสินค้าที่เคยสั่งซื้อ</h2>
+      <p class="tag-muted" style="margin:0 0 14px">กรอกเบอร์โทรที่ใช้ตอนสั่งซื้อ เพื่อดูรายการสินค้าที่จัดส่งแล้วและยังไม่เคยรีวิว</p>
+      <div style="display:flex;gap:8px;max-width:340px">
+        <input type="tel" id="reviewPhoneInput" placeholder="เบอร์โทรที่ใช้ตอนสั่งซื้อ" maxlength="10">
+        <button class="btn" id="btnReviewLookup" type="button">ค้นหา</button>
+      </div>
+      <div class="error-text" id="reviewLookupMsg"></div>
+      <div id="reviewableList" style="margin-top:16px"></div>
     </div>
   </div>
 </div>

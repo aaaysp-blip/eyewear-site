@@ -32,6 +32,7 @@
     <a class="nav-link" data-view="restock">สั่งซื้อสินค้า</a>
     <a class="nav-link" data-view="orders">จัดการออเดอร์</a>
     <a class="nav-link" data-view="crm">ลูกค้า (CRM)</a>
+    <a class="nav-link" data-view="promotions">โปรโมชั่น</a>
     <a class="nav-link" data-view="settings">ตั้งค่า</a>
     <div style="margin-top:auto;padding-top:14px;border-top:1px solid var(--border)">
       <a class="nav-link" href="index.html">↩ กลับหน้าร้าน</a>
@@ -180,6 +181,27 @@
         <table>
           <thead><tr><th>เบอร์โทร</th><th>ชื่อ</th><th>จังหวัด</th><th>จำนวนออเดอร์</th><th>ยอดซื้อสะสม</th></tr></thead>
           <tbody id="crmBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Promotions -->
+    <section class="admin-view" id="view-promotions">
+      <div class="admin-header"><h1>โปรโมชั่น (คูปองส่งฟรี)</h1></div>
+      <div class="panel">
+        <h2>สร้างโค้ดใหม่</h2>
+        <div class="form-grid">
+          <div class="field"><label>ชื่อโค้ด *</label><input type="text" id="promoCode" placeholder="เช่น FREESHIP50" style="text-transform:uppercase"></div>
+          <div class="field"><label>จำนวนโค้ดที่ออก (สิทธิ์ใช้ได้ทั้งหมด) *</label><input type="number" id="promoMaxUses" min="1" value="50"></div>
+        </div>
+        <div class="error-text" id="promoFormError"></div>
+        <button class="btn btn-primary" id="btnCreatePromo" type="button">สร้างโค้ด</button>
+      </div>
+      <div class="panel">
+        <h2>โค้ดทั้งหมด</h2>
+        <table>
+          <thead><tr><th>โค้ด</th><th>สิทธิ์ทั้งหมด</th><th>เก็บ/กรอกใช้แล้ว</th><th>ใช้จริง (สั่งซื้อสำเร็จ)</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody id="promoBody"></tbody>
         </table>
       </div>
     </section>
