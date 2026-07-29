@@ -210,6 +210,15 @@
     4: 'จัดส่งแล้ว',
   };
 
+  // รายชื่อขนส่งที่ร้านใช้ — key ใช้เก็บในออเดอร์, value ใช้แสดงผล
+  const COURIERS = {
+    kex: 'KEX (Kerry Express)',
+    flash: 'Flash Express',
+    ems: 'ไปรษณีย์ไทย (EMS)',
+    jt: 'J&T Express',
+    spx: 'SPX Express',
+  };
+
   function getOrders() { return read(KEYS.orders, []); }
   function getOrder(id) { return getOrders().find(o => o.id === id) || null; }
 
@@ -229,6 +238,7 @@
       promoCode: promoCode || null,
       paymentSlip: paymentSlip || null,
       trackingNo: null,
+      courier: null,
       codDeliveryStatus: null, // null | 'delivered' | 'returned' — เฉพาะออเดอร์ COD หลังสถานะจัดส่งแล้ว
       status: 1,
       createdAt: new Date().toISOString(),
@@ -265,16 +275,24 @@
 
   function nextStatus(status) { return Math.min(4, status + 1); }
 
-  // บันทึกเลข tracking แล้วปรับสถานะเป็น "จัดส่งแล้ว" (4) ในขั้นตอนเดียว — บังคับให้มีเลข tracking ก่อนเข้าสถานะนี้เสมอ
-  function setTrackingAndShip(id, trackingNo) {
+  // บันทึกขนส่ง + เลข tracking แล้วปรับสถานะเป็น "จัดส่งแล้ว" (4) ในขั้นตอนเดียว — บังคับให้มีทั้งขนส่งและเลข tracking ก่อนเข้าสถานะนี้เสมอ
+  function setTrackingAndShip(id, trackingNo, courier) {
     const orders = getOrders();
     const o = orders.find(x => x.id === id);
     if (!o) return null;
     o.trackingNo = String(trackingNo || '').trim();
+    o.courier = courier || null;
     o.status = 4;
     o.updatedAt = new Date().toISOString();
     write(KEYS.orders, orders);
     return o;
+  }
+
+  // ค้นหาออเดอร์สำหรับหน้าเช็คสถานะฝั่งลูกค้า — ต้องตรงทั้งเบอร์โทรและเลขที่ออเดอร์ (กันคนอื่นเดาเลขออเดอร์แล้วดูของคนอื่นได้)
+  function findOrderForTracking(phone, orderNo) {
+    const p = String(phone || '').trim();
+    const no = String(orderNo || '').trim().toLowerCase();
+    return getOrders().find(o => o.customer.phone === p && o.orderNo.toLowerCase() === no) || null;
   }
 
   // ผลการส่งของออเดอร์ COD: ส่งสำเร็จ (เก็บเงินได้จริง) หรือตีกลับ (คืนสต็อกให้อัตโนมัติ)
@@ -575,7 +593,7 @@
     placeholderImage,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
     generateNextCode, updateVariantStock, isNew,
-    STATUS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, markCodDelivered, markCodReturned,
+    STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, findOrderForTracking, markCodDelivered, markCodReturned,
     getRestocks, getRestock, createRestock, updateRestockReceivedQty, confirmRestockReceive, pendingRestockCount,
     getCustomers, getCustomerByPhone, getCustomerStats,
     getConfig, setConfig,

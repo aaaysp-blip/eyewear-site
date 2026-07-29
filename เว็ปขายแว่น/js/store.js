@@ -523,6 +523,56 @@
     document.getElementById('storeReviewsModal').classList.add('show');
   });
 
+  // ---------------- เช็คสถานะออเดอร์ (เบอร์โทร + เลขที่ออเดอร์ → สถานะ/ขนส่ง/เลข Tracking) ----------------
+  const trackingModal = document.getElementById('trackingModal');
+  document.getElementById('btnOpenTracking').addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('trackPhoneInput').value = '';
+    document.getElementById('trackOrderNoInput').value = '';
+    document.getElementById('trackLookupMsg').textContent = '';
+    document.getElementById('trackResult').innerHTML = '';
+    trackingModal.classList.add('show');
+  });
+
+  document.getElementById('btnTrackLookup').addEventListener('click', runTrackLookup);
+  document.getElementById('trackOrderNoInput').addEventListener('keydown', e => { if (e.key === 'Enter') runTrackLookup(); });
+
+  function runTrackLookup() {
+    const phone = document.getElementById('trackPhoneInput').value.trim();
+    const orderNo = document.getElementById('trackOrderNoInput').value.trim();
+    const msg = document.getElementById('trackLookupMsg');
+    const result = document.getElementById('trackResult');
+    if (!/^0\d{8,9}$/.test(phone)) { msg.textContent = 'กรุณากรอกเบอร์โทรให้ถูกต้อง'; result.innerHTML = ''; return; }
+    if (!orderNo) { msg.textContent = 'กรุณากรอกเลขที่ออเดอร์'; result.innerHTML = ''; return; }
+    const order = DB.findOrderForTracking(phone, orderNo);
+    if (!order) { msg.textContent = 'ไม่พบออเดอร์ที่ตรงกับเบอร์โทรและเลขที่ออเดอร์นี้ กรุณาตรวจสอบอีกครั้ง'; result.innerHTML = ''; return; }
+    msg.textContent = '';
+    renderTrackResult(order);
+  }
+
+  function renderTrackResult(o) {
+    const wrap = document.getElementById('trackResult');
+    const stepDefs = [[1, 'รอตรวจสลิป'], [2, 'รอยืนยันเบอร์โทร'], [3, 'แพ็คแล้ว'], [4, 'จัดส่งแล้ว']];
+    const orderDate = new Date(o.createdAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    wrap.innerHTML = `
+      <div style="font-weight:600;font-size:16px">ออเดอร์ ${escapeHtml(o.orderNo)}</div>
+      <div class="tag-muted" style="margin:2px 0 12px">วันที่สั่งซื้อ: ${orderDate}</div>
+      <div class="steps" style="margin-bottom:14px">
+        ${stepDefs.map(([n, label], idx) => `
+          ${idx > 0 ? '<div class="step-sep"></div>' : ''}
+          <div class="step ${o.status === n ? 'active' : ''} ${o.status > n ? 'done' : ''}"><span class="num">${n}</span> ${escapeHtml(label)}</div>
+        `).join('')}
+      </div>
+      ${o.status === 4 ? `
+        <div class="order-meta-grid">
+          <div><strong>จัดส่งโดย:</strong> ${o.courier ? escapeHtml(DB.COURIERS[o.courier] || o.courier) : '-'}</div>
+          <div><strong>เลข Tracking:</strong> ${o.trackingNo ? escapeHtml(o.trackingNo) : '-'}</div>
+        </div>
+        <div class="tag-muted" style="margin-top:8px;font-size:12.5px">นำเลข Tracking ไปเช็คสถานะการเดินทางของพัสดุได้ที่เว็บไซต์หรือแอปของขนส่งที่ระบุไว้ด้านบน</div>
+      ` : ''}
+    `;
+  }
+
   // ---------------- Modal close (generic) ----------------
   document.querySelectorAll('[data-close-modal]').forEach(el => {
     el.addEventListener('click', () => {

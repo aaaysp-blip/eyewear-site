@@ -1145,6 +1145,13 @@
     if (o.status === 3) {
       return `
         <div class="field" style="max-width:280px">
+          <label>ขนส่ง (บังคับเลือกก่อนยืนยันจัดส่ง)</label>
+          <select id="courier-${o.id}">
+            <option value="">— เลือกขนส่ง —</option>
+            ${Object.entries(DB.COURIERS).map(([key, label]) => `<option value="${key}">${escapeHtml(label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field" style="max-width:280px">
           <label>เลข Tracking (บังคับกรอกก่อนยืนยันจัดส่ง)</label>
           <input type="text" id="tracking-${o.id}" placeholder="เช่น TH0123456789">
         </div>
@@ -1240,6 +1247,7 @@
             <div><strong>รหัสไปรษณีย์:</strong> ${escapeHtml(o.customer.zipcode)}</div>
             <div><strong>ชำระเงิน:</strong> ${o.paymentMethod === 'cod' ? 'เก็บเงินปลายทาง (COD)' : 'พร้อมเพย์'}</div>
             <div><strong>คูปอง:</strong> ${o.promoCode ? escapeHtml(o.promoCode) : '-'}</div>
+            <div><strong>ขนส่ง:</strong> ${o.courier ? escapeHtml(DB.COURIERS[o.courier] || o.courier) : '-'}</div>
             <div><strong>เลข Tracking:</strong> ${o.trackingNo ? escapeHtml(o.trackingNo) : '-'}</div>
             <div class="span2" style="grid-column:1/-1"><strong>ที่อยู่:</strong> ${escapeHtml(o.customer.address)} ต.${escapeHtml(o.customer.subdistrict)} อ.${escapeHtml(o.customer.district)} จ.${escapeHtml(o.customer.province)} ${escapeHtml(o.customer.zipcode)}</div>
           </div>
@@ -1288,11 +1296,14 @@
       btn.addEventListener('click', e => {
         e.stopPropagation();
         const oid = btn.dataset.confirmShip;
+        const courierSel = document.getElementById(`courier-${oid}`);
         const input = document.getElementById(`tracking-${oid}`);
         const err = document.getElementById(`tracking-err-${oid}`);
+        const courier = courierSel.value;
         const trackingNo = input.value.trim();
+        if (!courier) { err.textContent = 'กรุณาเลือกขนส่งก่อนยืนยันจัดส่ง'; return; }
         if (!trackingNo) { err.textContent = 'กรุณากรอกเลข Tracking ก่อนยืนยันจัดส่ง'; return; }
-        DB.setTrackingAndShip(oid, trackingNo);
+        DB.setTrackingAndShip(oid, trackingNo, courier);
         renderOrders();
         showToast('บันทึกเลข Tracking และยืนยันจัดส่งแล้ว');
       });
