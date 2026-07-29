@@ -1160,6 +1160,7 @@
           <div style="text-align:right;font-size:13px;margin-top:8px;color:var(--text-muted)">
             ยอดสินค้า ฿${(o.subtotal != null ? o.subtotal : o.total).toLocaleString()}
             · ค่าส่ง ${o.shippingFee ? '฿' + o.shippingFee.toLocaleString() : 'ฟรี'}
+            ${o.codFee ? ` · ค่าบริการ COD ฿${o.codFee.toLocaleString()}` : ''}
             · รวม <strong style="color:var(--text)">฿${o.total.toLocaleString()}</strong>
           </div>
           <div class="order-actions" style="margin-top:14px">

@@ -276,20 +276,12 @@
       if (p.templeLength) specParts.push(`<div class="spec-item"><div class="val">${p.templeLength}</div><div class="lbl">ความยาวขาแว่น (มม.)</div></div>`);
     }
 
-    const ratingSummary = DB.getProductRatingSummary(p.id);
-    const productReviews = DB.getReviewsForProduct(p.id).slice(0, 8);
-
     document.getElementById('productPopupBody').innerHTML = `
       <div class="popup-media"><img src="${img}" alt="" id="popupMediaImg"><span class="popup-zoom-hint">🔍 แตะเพื่อซูม</span></div>
       <div class="popup-info">
         <div class="popup-code">${p.code}</div>
         <div class="popup-name">${escapeHtml(p.name)}</div>
         <div class="popup-brand">${escapeHtml(p.brand)}</div>
-        <div class="rating-summary">
-          <span class="star-rating">${starsString(ratingSummary.average)}</span>
-          <span class="avg">${ratingSummary.count ? ratingSummary.average.toFixed(1) : '-'}</span>
-          <span class="tag-muted">(${ratingSummary.count} รีวิว)</span>
-        </div>
         ${specParts.length ? `<div class="spec-grid">${specParts.join('')}</div>` : ''}
         ${p.variants.length > 1 ? `<div class="field"><label>เลือกสี</label><div class="swatches" id="popupSwatches">${swatches}</div></div>` : ''}
         <div class="field">
@@ -309,19 +301,6 @@
         <button class="btn btn-primary btn-block" id="btnAddCart" ${!v || v.stock === 0 || qty < 1 ? 'disabled' : ''}>
           ${!v || v.stock === 0 ? 'หมดสต็อก' : 'ใส่ตะกร้า'}
         </button>
-        <div>
-          <div style="font-weight:600;font-size:13px;margin-bottom:4px">รีวิวจากลูกค้า</div>
-          ${productReviews.length ? `<div class="review-list">${productReviews.map(r => `
-            <div class="review-item">
-              <div class="rhead">
-                <span class="rname">${escapeHtml(maskReviewerName(r.customerName))}</span>
-                <span class="star-rating">${starsString(r.rating)}</span>
-              </div>
-              ${r.comment ? `<div>${escapeHtml(r.comment)}</div>` : ''}
-              <div class="rdate">${new Date(r.createdAt).toLocaleDateString('th-TH')}</div>
-            </div>
-          `).join('')}</div>` : `<div class="tag-muted" style="font-size:12.5px">ยังไม่มีรีวิวสำหรับสินค้านี้</div>`}
-        </div>
       </div>
     `;
 
@@ -370,7 +349,8 @@
     } else {
       cart.push({
         productId: p.id, variantId: v.id, code: p.code, name: p.name,
-        color: v.color, qty, price: p.price, image: v.images[0] || '',
+        color: v.color, qty, price: p.price,
+        image: v.images[0] || (p.imagesOriginal && p.imagesOriginal[0]) || (p.images && p.images[0]) || '',
       });
     }
     setCart(cart);
@@ -433,7 +413,7 @@
     el.addEventListener('click', () => setZoom(1));
   });
 
-  // ---------------- Write a review ----------------
+  // ---------------- Write a review (รีวิวร้านค้าโดยรวม 1 ออเดอร์ = 1 รีวิว) ----------------
   const reviewModal = document.getElementById('reviewModal');
   document.getElementById('btnOpenReview').addEventListener('click', e => {
     e.preventDefault();
@@ -453,37 +433,36 @@
       return;
     }
     msg.textContent = '';
-    const items = DB.getReviewableItemsForPhone(phone);
-    renderReviewableList(items, phone);
+    const orders = DB.getReviewableOrdersForPhone(phone);
+    renderReviewableList(orders, phone);
   });
 
-  function renderReviewableList(items, phone) {
+  function renderReviewableList(orders, phone) {
     const listWrap = document.getElementById('reviewableList');
-    if (!items.length) {
-      listWrap.innerHTML = `<div class="tag-muted">ไม่พบสินค้าที่จัดส่งแล้วและยังไม่เคยรีวิวสำหรับเบอร์นี้</div>`;
+    if (!orders.length) {
+      listWrap.innerHTML = `<div class="tag-muted">ไม่พบออเดอร์ที่จัดส่งแล้วและยังไม่เคยรีวิวสำหรับเบอร์นี้</div>`;
       return;
     }
-    listWrap.innerHTML = items.map((it, idx) => `
+    listWrap.innerHTML = orders.map((o, idx) => `
       <div class="reviewable-card" data-idx="${idx}">
         <div class="rp-head">
-          <img src="${it.image || ''}" alt="">
           <div>
-            <div style="font-weight:600">${escapeHtml(it.name)} <span class="tag-muted">(${escapeHtml(it.color)})</span></div>
-            <div class="tag-muted" style="font-size:11.5px">ออเดอร์ ${it.orderNo}</div>
+            <div style="font-weight:600">ออเดอร์ ${o.orderNo}</div>
+            <div class="tag-muted" style="font-size:11.5px">${o.items.length} รายการ · ${new Date(o.createdAt).toLocaleDateString('th-TH')} · ฿${o.total.toLocaleString()}</div>
           </div>
         </div>
-        <div class="field"><label>ให้คะแนน</label>
+        <div class="field"><label>ให้คะแนนร้านค้าโดยรวม</label>
           <div class="star-picker" data-idx="${idx}">
             ${[1, 2, 3, 4, 5].map(n => `<span data-star="${n}">★</span>`).join('')}
           </div>
         </div>
-        <textarea placeholder="เล่าความรู้สึกกับสินค้านี้ (ไม่บังคับ)" data-idx="${idx}"></textarea>
+        <textarea placeholder="เล่าประสบการณ์การสั่งซื้อครั้งนี้ (ไม่บังคับ)" data-idx="${idx}"></textarea>
         <div class="error-text" data-idx="${idx}"></div>
         <button class="btn btn-primary btn-sm" data-submit-review="${idx}" type="button" style="margin-top:8px">ส่งรีวิว</button>
       </div>
     `).join('');
 
-    const ratings = items.map(() => 0);
+    const ratings = orders.map(() => 0);
 
     listWrap.querySelectorAll('.star-picker').forEach(picker => {
       const idx = Number(picker.dataset.idx);
@@ -499,26 +478,50 @@
     listWrap.querySelectorAll('[data-submit-review]').forEach(btn => {
       btn.addEventListener('click', () => {
         const idx = Number(btn.dataset.submitReview);
-        const item = items[idx];
+        const order = orders[idx];
         const card = listWrap.querySelector(`.reviewable-card[data-idx="${idx}"]`);
         const errEl = card.querySelector('.error-text');
         const rating = ratings[idx];
         if (!rating) { errEl.textContent = 'กรุณาเลือกจำนวนดาว'; return; }
         const comment = card.querySelector('textarea').value.trim();
-        const cfg = DB.getCustomerByPhone(phone);
         DB.submitReview({
-          productId: item.productId,
-          variantId: item.variantId,
-          orderId: item.orderId,
+          orderId: order.id,
           phone,
-          customerName: (cfg && cfg.name) || 'ลูกค้า',
+          customerName: order.customer.name || 'ลูกค้า',
           rating,
           comment,
         });
         card.innerHTML = `<div class="tag-muted">ส่งรีวิวเรียบร้อย ขอบคุณค่ะ/ครับ 🙏</div>`;
+        renderStoreRating();
       });
     });
   }
+
+  // ---------------- Store-wide rating display ----------------
+  function renderStoreRating() {
+    const badge = document.getElementById('storeRatingBadge');
+    if (!badge) return;
+    const summary = DB.getStoreRatingSummary();
+    badge.innerHTML = summary.count
+      ? `<span class="star-rating">${starsString(summary.average)}</span> <span class="avg">${summary.average.toFixed(1)}</span> <span class="tag-muted">(${summary.count} รีวิวจากลูกค้าจริง)</span>`
+      : `<span class="tag-muted">ยังไม่มีรีวิว</span>`;
+  }
+  document.getElementById('btnOpenStoreReviews').addEventListener('click', e => {
+    e.preventDefault();
+    const listWrap = document.getElementById('storeReviewList');
+    const reviews = DB.getReviews();
+    listWrap.innerHTML = reviews.length ? reviews.map(r => `
+      <div class="review-item">
+        <div class="rhead">
+          <span class="rname">${escapeHtml(maskReviewerName(r.customerName))}</span>
+          <span class="star-rating">${starsString(r.rating)}</span>
+        </div>
+        ${r.comment ? `<div>${escapeHtml(r.comment)}</div>` : ''}
+        <div class="rdate">${new Date(r.createdAt).toLocaleDateString('th-TH')}</div>
+      </div>
+    `).join('') : `<div class="tag-muted">ยังไม่มีรีวิว</div>`;
+    document.getElementById('storeReviewsModal').classList.add('show');
+  });
 
   // ---------------- Modal close (generic) ----------------
   document.querySelectorAll('[data-close-modal]').forEach(el => {
@@ -561,6 +564,7 @@
   function cartTotal(cart) { return cart.reduce((s, i) => s + i.price * i.qty, 0); }
   function cartTotalQty(cart) { return cart.reduce((s, i) => s + i.qty, 0); }
   function currentShippingFee(cart) { return checkoutPromo ? 0 : DB.calcShippingFee(cartTotalQty(cart)); }
+  function currentCodFee() { return checkoutPaymentMethod === 'cod' ? DB.COD_FEE : 0; }
 
   function renderCheckout() {
     setStepUI(checkoutStep);
@@ -575,9 +579,10 @@
       const subtotal = cartTotal(cart);
       const totalQty = cartTotalQty(cart);
       const shippingFee = currentShippingFee(cart);
-      const grandTotal = subtotal + (shippingFee || 0);
       const codOk = DB.isCodAvailable(totalQty);
       if (!codOk && checkoutPaymentMethod === 'cod') checkoutPaymentMethod = 'promptpay';
+      const codFee = currentCodFee();
+      const grandTotal = subtotal + (shippingFee || 0) + codFee;
       const overLimit = shippingFee == null;
 
       body.innerHTML = `
@@ -614,6 +619,7 @@
             <span>ค่าจัดส่ง (${(totalQty * DB.UNIT_WEIGHT_G / 1000).toFixed(1)} กก.)</span>
             <span>${overLimit ? 'ติดต่อร้าน' : (shippingFee === 0 ? 'ฟรี' : '฿' + shippingFee.toLocaleString())}</span>
           </div>
+          ${codFee ? `<div style="display:flex;justify-content:space-between"><span>ค่าบริการเก็บเงินปลายทาง</span><span>฿${codFee.toLocaleString()}</span></div>` : ''}
           <div style="display:flex;justify-content:space-between;font-weight:700;font-size:16px;border-top:1px solid var(--border);padding-top:6px">
             <span>ยอดรวมทั้งหมด</span><span>฿${overLimit ? subtotal.toLocaleString() + ' +ค่าส่ง' : grandTotal.toLocaleString()}</span>
           </div>
@@ -623,7 +629,7 @@
           <label>วิธีชำระเงิน</label>
           <div style="display:flex;gap:16px;flex-wrap:wrap">
             <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="radio" name="payMethod" value="promptpay" ${checkoutPaymentMethod === 'promptpay' ? 'checked' : ''}> พร้อมเพย์ (สแกน QR)</label>
-            <label style="display:flex;gap:6px;align-items:center;font-weight:400;${codOk ? '' : 'opacity:.5'}"><input type="radio" name="payMethod" value="cod" ${checkoutPaymentMethod === 'cod' ? 'checked' : ''} ${codOk ? '' : 'disabled'}> เก็บเงินปลายทาง</label>
+            <label style="display:flex;gap:6px;align-items:center;font-weight:400;${codOk ? '' : 'opacity:.5'}"><input type="radio" name="payMethod" value="cod" ${checkoutPaymentMethod === 'cod' ? 'checked' : ''} ${codOk ? '' : 'disabled'}> เก็บเงินปลายทาง (+฿${DB.COD_FEE})</label>
           </div>
           ${!codOk ? `<div class="tag-muted" style="margin-top:4px">เก็บเงินปลายทางให้บริการเฉพาะคำสั่งซื้อไม่เกิน ${DB.COD_MAX_QTY} ชิ้น (2 กก.) คำสั่งซื้อนี้เกินกำหนด จึงรองรับเฉพาะพร้อมเพย์</div>` : ''}
         </div>
@@ -679,14 +685,15 @@
     if (checkoutStep === 2) {
       const subtotal = cartTotal(cart);
       const shippingFee = currentShippingFee(cart) || 0;
-      const grandTotal = subtotal + shippingFee;
+      const codFee = currentCodFee();
+      const grandTotal = subtotal + shippingFee + codFee;
 
       if (checkoutPaymentMethod === 'cod') {
         body.innerHTML = `
           <div class="qr-box">
             <div style="font-size:40px">📦</div>
             <div class="qr-amount">฿${grandTotal.toLocaleString()}</div>
-            <div class="qr-hint">ชำระเงินปลายทางกับพนักงานจัดส่งเมื่อได้รับสินค้า<br>(รวมค่าจัดส่ง ฿${shippingFee.toLocaleString()} แล้ว)</div>
+            <div class="qr-hint">ชำระเงินปลายทางกับพนักงานจัดส่งเมื่อได้รับสินค้า<br>(รวมค่าจัดส่ง ฿${shippingFee.toLocaleString()} และค่าบริการเก็บเงินปลายทาง ฿${codFee.toLocaleString()} แล้ว)</div>
           </div>
           <div style="display:flex;gap:10px;margin-top:14px;">
             <button class="btn" id="btnBack1">‹ กลับ</button>
@@ -792,11 +799,13 @@
     if (!cart.length) return;
     const subtotal = cartTotal(cart);
     const shippingFee = currentShippingFee(cart) || 0;
-    const total = subtotal + shippingFee;
+    const codFee = currentCodFee();
+    const total = subtotal + shippingFee + codFee;
     lastOrder = DB.createOrder({
       items: cart,
       subtotal,
       shippingFee,
+      codFee,
       total,
       customer: { name, phone, lineId, address, subdistrict, district, province, zipcode },
       paymentMethod: checkoutPaymentMethod,
@@ -813,5 +822,6 @@
   // ---------------- init ----------------
   renderCartCount();
   updateFilterBadge();
+  renderStoreRating();
   renderGrid();
 })();

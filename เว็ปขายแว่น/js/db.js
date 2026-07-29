@@ -213,7 +213,7 @@
   function getOrders() { return read(KEYS.orders, []); }
   function getOrder(id) { return getOrders().find(o => o.id === id) || null; }
 
-  function createOrder({ items, subtotal, shippingFee, total, customer, paymentMethod, promoCode }) {
+  function createOrder({ items, subtotal, shippingFee, codFee, total, customer, paymentMethod, promoCode }) {
     const orders = getOrders();
     const orderNo = 'OD' + Date.now().toString().slice(-8) + String(orders.length + 1).padStart(3, '0');
     const order = {
@@ -222,6 +222,7 @@
       items,
       subtotal: subtotal != null ? subtotal : total,
       shippingFee: shippingFee || 0,
+      codFee: codFee || 0,
       total,
       customer,
       paymentMethod: paymentMethod || 'promptpay',
@@ -368,6 +369,7 @@
     { maxKg: 20, fee: 350 },
   ];
   const COD_MAX_QTY = 20; // = 2kg พอดีตามเกณฑ์ที่กำหนด
+  const COD_FEE = 100; // ค่าบริการเก็บเงินปลายทาง บวกเพิ่มต่อออเดอร์
 
   function calcTotalWeightGrams(totalQty) { return totalQty * UNIT_WEIGHT_G; }
 
@@ -441,42 +443,27 @@
     write(KEYS.promotions, promos);
   }
 
-  // ---------- Reviews (รีวิว + ให้ดาว เฉพาะลูกค้าที่เคยสั่งซื้อจริง) ----------
+  // ---------- Reviews (รีวิวร้านค้าโดยรวม เฉพาะลูกค้าที่เคยสั่งซื้อจริง — 1 ออเดอร์ = 1 รีวิว) ----------
   function getReviews() { return read(KEYS.reviews, []); }
-  function getReviewsForProduct(productId) { return getReviews().filter(r => r.productId === productId); }
 
-  function getProductRatingSummary(productId) {
-    const reviews = getReviewsForProduct(productId);
+  function getStoreRatingSummary() {
+    const reviews = getReviews();
     if (!reviews.length) return { count: 0, average: 0 };
     const sum = reviews.reduce((s, r) => s + r.rating, 0);
     return { count: reviews.length, average: Math.round((sum / reviews.length) * 10) / 10 };
   }
 
-  // หาออเดอร์ของเบอร์นี้ที่ "จัดส่งแล้ว" และยังไม่เคยรีวิวสินค้าชิ้นนั้นในออเดอร์นั้น
-  function getReviewableItemsForPhone(phone) {
+  // หาออเดอร์ของเบอร์นี้ที่ "จัดส่งแล้ว" และยังไม่เคยรีวิว (1 ออเดอร์รีวิวได้ครั้งเดียว)
+  function getReviewableOrdersForPhone(phone) {
     const reviews = getReviews();
-    const orders = getOrders().filter(o => o.customer.phone === phone && o.status === 4);
-    const out = [];
-    orders.forEach(o => {
-      o.items.forEach(item => {
-        const already = reviews.some(r => r.orderId === o.id && r.productId === item.productId && r.variantId === item.variantId);
-        if (already) return;
-        let image = item.image;
-        if (!image) {
-          const p = getProduct(item.productId);
-          if (p && p.images && p.images[0]) image = p.images[0];
-        }
-        out.push({ orderId: o.id, orderNo: o.orderNo, ...item, image });
-      });
-    });
-    return out;
+    return getOrders().filter(o => o.customer.phone === phone && o.status === 4 && !reviews.some(r => r.orderId === o.id));
   }
 
-  function submitReview({ productId, variantId, orderId, phone, customerName, rating, comment }) {
+  function submitReview({ orderId, phone, customerName, rating, comment }) {
     const reviews = getReviews();
     const review = {
       id: uid('rev'),
-      productId, variantId, orderId, phone,
+      orderId, phone,
       customerName: customerName || 'ลูกค้า',
       rating: Math.max(1, Math.min(5, Math.round(Number(rating) || 5))),
       comment: (comment || '').trim(),
@@ -485,6 +472,10 @@
     reviews.unshift(review);
     write(KEYS.reviews, reviews);
     return review;
+  }
+
+  function deleteReview(id) {
+    write(KEYS.reviews, getReviews().filter(r => r.id !== id));
   }
 
   // ---------- Config ----------
@@ -535,9 +526,9 @@
     getCustomers, getCustomerByPhone, getCustomerStats,
     getConfig, setConfig,
     monthSales, pendingOrderCount, bestSellers, lowStockVariants,
-    calcTotalWeightGrams, calcShippingFee, isCodAvailable, UNIT_WEIGHT_G, COD_MAX_QTY,
+    calcTotalWeightGrams, calcShippingFee, isCodAvailable, UNIT_WEIGHT_G, COD_MAX_QTY, COD_FEE,
     getPromotions, getPromotion, getPromotionByCode, createPromotion, setPromotionActive, deletePromotion, applyPromotion, redeemPromotion,
-    getReviews, getReviewsForProduct, getProductRatingSummary, getReviewableItemsForPhone, submitReview,
+    getReviews, getStoreRatingSummary, getReviewableOrdersForPhone, submitReview, deleteReview,
     uid,
   };
 })(window);
