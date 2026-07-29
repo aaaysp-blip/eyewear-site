@@ -213,7 +213,7 @@
   function getOrders() { return read(KEYS.orders, []); }
   function getOrder(id) { return getOrders().find(o => o.id === id) || null; }
 
-  function createOrder({ items, subtotal, shippingFee, codFee, total, customer, paymentMethod, promoCode }) {
+  function createOrder({ items, subtotal, shippingFee, codFee, total, customer, paymentMethod, promoCode, paymentSlip }) {
     const orders = getOrders();
     const orderNo = 'OD' + Date.now().toString().slice(-8) + String(orders.length + 1).padStart(3, '0');
     const order = {
@@ -227,6 +227,9 @@
       customer,
       paymentMethod: paymentMethod || 'promptpay',
       promoCode: promoCode || null,
+      paymentSlip: paymentSlip || null,
+      trackingNo: null,
+      codDeliveryStatus: null, // null | 'delivered' | 'returned' — เฉพาะออเดอร์ COD หลังสถานะจัดส่งแล้ว
       status: 1,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -261,6 +264,48 @@
   }
 
   function nextStatus(status) { return Math.min(4, status + 1); }
+
+  // บันทึกเลข tracking แล้วปรับสถานะเป็น "จัดส่งแล้ว" (4) ในขั้นตอนเดียว — บังคับให้มีเลข tracking ก่อนเข้าสถานะนี้เสมอ
+  function setTrackingAndShip(id, trackingNo) {
+    const orders = getOrders();
+    const o = orders.find(x => x.id === id);
+    if (!o) return null;
+    o.trackingNo = String(trackingNo || '').trim();
+    o.status = 4;
+    o.updatedAt = new Date().toISOString();
+    write(KEYS.orders, orders);
+    return o;
+  }
+
+  // ผลการส่งของออเดอร์ COD: ส่งสำเร็จ (เก็บเงินได้จริง) หรือตีกลับ (คืนสต็อกให้อัตโนมัติ)
+  function markCodDelivered(id) {
+    const orders = getOrders();
+    const o = orders.find(x => x.id === id);
+    if (!o) return;
+    o.codDeliveryStatus = 'delivered';
+    o.updatedAt = new Date().toISOString();
+    write(KEYS.orders, orders);
+  }
+
+  function markCodReturned(id) {
+    const orders = getOrders();
+    const o = orders.find(x => x.id === id);
+    if (!o) return;
+    if (o.codDeliveryStatus === 'returned') return; // กันคืนสต็อกซ้ำ
+    o.codDeliveryStatus = 'returned';
+    o.updatedAt = new Date().toISOString();
+    write(KEYS.orders, orders);
+    // คืนสต็อกสินค้าที่ตีกลับให้อัตโนมัติ (ไม่ต้องมานั่งเพิ่มสต็อกเองอีกรอบ)
+    const products = getProducts();
+    o.items.forEach(item => {
+      const p = products.find(x => x.id === item.productId);
+      if (!p) return;
+      const v = p.variants.find(x => x.id === item.variantId);
+      if (!v) return;
+      v.stock += item.qty;
+    });
+    write(KEYS.products, products);
+  }
 
   // ---------- Restocks (ใบสั่งซื้อเข้าสต็อก) ----------
   // สถานะ: 1 = รอของเข้า (รอตรวจรับ), 2 = ตรวจรับเข้าสต็อกแล้ว
@@ -356,8 +401,9 @@
   }
 
   // ---------- Shipping ----------
-  // สมมติฐาน: แว่น/อุปกรณ์เสริม 1 หน่วย = 100 กรัม
-  const UNIT_WEIGHT_G = 100;
+  // น้ำหนักต่อหน่วย: แว่นตา/กรอบแว่น = 100 กรัม, อุปกรณ์เสริม = 500 กรัม (บางรายการขายเป็นโหล/แพ็ค ไม่ใช่ต่อชิ้น)
+  const UNIT_WEIGHT_EYEWEAR_G = 100;
+  const UNIT_WEIGHT_ACCESSORY_G = 500;
   const SHIPPING_TIERS = [
     { maxKg: 1, fee: 50 },
     { maxKg: 2, fee: 60 },
@@ -368,20 +414,28 @@
     { maxKg: 15, fee: 250 },
     { maxKg: 20, fee: 350 },
   ];
-  const COD_MAX_QTY = 20; // = 2kg พอดีตามเกณฑ์ที่กำหนด
+  const COD_MAX_KG = 2;
   const COD_FEE = 100; // ค่าบริการเก็บเงินปลายทาง บวกเพิ่มต่อออเดอร์
 
-  function calcTotalWeightGrams(totalQty) { return totalQty * UNIT_WEIGHT_G; }
+  function unitWeightForProduct(productId) {
+    const p = getProduct(productId);
+    return (p && p.category === 'accessories') ? UNIT_WEIGHT_ACCESSORY_G : UNIT_WEIGHT_EYEWEAR_G;
+  }
 
-  function calcShippingFee(totalQty) {
-    const kg = calcTotalWeightGrams(totalQty) / 1000;
+  // cartItems: array of { productId, qty, ... } — ใช้ได้ทั้งตะกร้าตอนเช็คเอาท์และ order.items ที่บันทึกแล้ว
+  function calcCartWeightGrams(cartItems) {
+    return (cartItems || []).reduce((sum, it) => sum + it.qty * unitWeightForProduct(it.productId), 0);
+  }
+
+  function calcShippingFee(cartItems) {
+    const kg = calcCartWeightGrams(cartItems) / 1000;
     for (const tier of SHIPPING_TIERS) {
       if (kg <= tier.maxKg) return tier.fee;
     }
     return null; // เกิน 20kg — ต้องติดต่อร้านเพื่อสอบถามค่าส่งเอง ยังไม่มีเกณฑ์อัตโนมัติ
   }
 
-  function isCodAvailable(totalQty) { return totalQty <= COD_MAX_QTY; }
+  function isCodAvailable(cartItems) { return calcCartWeightGrams(cartItems) / 1000 <= COD_MAX_KG; }
 
   // ---------- Promotions (คูปองส่งฟรี) ----------
   function getPromotions() { return read(KEYS.promotions, []); }
@@ -521,12 +575,12 @@
     placeholderImage,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
     generateNextCode, updateVariantStock, isNew,
-    STATUS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus,
+    STATUS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, markCodDelivered, markCodReturned,
     getRestocks, getRestock, createRestock, updateRestockReceivedQty, confirmRestockReceive, pendingRestockCount,
     getCustomers, getCustomerByPhone, getCustomerStats,
     getConfig, setConfig,
     monthSales, pendingOrderCount, bestSellers, lowStockVariants,
-    calcTotalWeightGrams, calcShippingFee, isCodAvailable, UNIT_WEIGHT_G, COD_MAX_QTY, COD_FEE,
+    calcCartWeightGrams, calcShippingFee, isCodAvailable, unitWeightForProduct, UNIT_WEIGHT_EYEWEAR_G, UNIT_WEIGHT_ACCESSORY_G, COD_MAX_KG, COD_FEE,
     getPromotions, getPromotion, getPromotionByCode, createPromotion, setPromotionActive, deletePromotion, applyPromotion, redeemPromotion,
     getReviews, getStoreRatingSummary, getReviewableOrdersForPhone, submitReview, deleteReview,
     uid,

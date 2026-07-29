@@ -536,6 +536,7 @@
   let lastOrder = null;
   let checkoutPromo = null;
   let checkoutPaymentMethod = 'promptpay';
+  let checkoutSlipDataUrl = null;
 
   function renderCartCount() {
     const cart = getCart();
@@ -549,6 +550,7 @@
     checkoutStep = 1;
     checkoutPromo = null;
     checkoutPaymentMethod = 'promptpay';
+    checkoutSlipDataUrl = null;
     renderCheckout();
     cartModal.classList.add('show');
   });
@@ -563,7 +565,7 @@
 
   function cartTotal(cart) { return cart.reduce((s, i) => s + i.price * i.qty, 0); }
   function cartTotalQty(cart) { return cart.reduce((s, i) => s + i.qty, 0); }
-  function currentShippingFee(cart) { return checkoutPromo ? 0 : DB.calcShippingFee(cartTotalQty(cart)); }
+  function currentShippingFee(cart) { return checkoutPromo ? 0 : DB.calcShippingFee(cart); }
   function currentCodFee() { return checkoutPaymentMethod === 'cod' ? DB.COD_FEE : 0; }
 
   function renderCheckout() {
@@ -578,8 +580,9 @@
       }
       const subtotal = cartTotal(cart);
       const totalQty = cartTotalQty(cart);
+      const totalWeightKg = DB.calcCartWeightGrams(cart) / 1000;
       const shippingFee = currentShippingFee(cart);
-      const codOk = DB.isCodAvailable(totalQty);
+      const codOk = DB.isCodAvailable(cart);
       if (!codOk && checkoutPaymentMethod === 'cod') checkoutPaymentMethod = 'promptpay';
       const codFee = currentCodFee();
       const grandTotal = subtotal + (shippingFee || 0) + codFee;
@@ -616,7 +619,7 @@
         <div class="cart-summary-total" style="flex-direction:column;align-items:stretch;gap:5px">
           <div style="display:flex;justify-content:space-between"><span>ยอดสินค้า</span><span>฿${subtotal.toLocaleString()}</span></div>
           <div style="display:flex;justify-content:space-between">
-            <span>ค่าจัดส่ง (${(totalQty * DB.UNIT_WEIGHT_G / 1000).toFixed(1)} กก.)</span>
+            <span>ค่าจัดส่ง (${totalWeightKg.toFixed(1)} กก.)</span>
             <span>${overLimit ? 'ติดต่อร้าน' : (shippingFee === 0 ? 'ฟรี' : '฿' + shippingFee.toLocaleString())}</span>
           </div>
           ${codFee ? `<div style="display:flex;justify-content:space-between"><span>ค่าบริการเก็บเงินปลายทาง</span><span>฿${codFee.toLocaleString()}</span></div>` : ''}
@@ -631,7 +634,7 @@
             <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="radio" name="payMethod" value="promptpay" ${checkoutPaymentMethod === 'promptpay' ? 'checked' : ''}> พร้อมเพย์ (สแกน QR)</label>
             <label style="display:flex;gap:6px;align-items:center;font-weight:400;${codOk ? '' : 'opacity:.5'}"><input type="radio" name="payMethod" value="cod" ${checkoutPaymentMethod === 'cod' ? 'checked' : ''} ${codOk ? '' : 'disabled'}> เก็บเงินปลายทาง (+฿${DB.COD_FEE})</label>
           </div>
-          ${!codOk ? `<div class="tag-muted" style="margin-top:4px">เก็บเงินปลายทางให้บริการเฉพาะคำสั่งซื้อไม่เกิน ${DB.COD_MAX_QTY} ชิ้น (2 กก.) คำสั่งซื้อนี้เกินกำหนด จึงรองรับเฉพาะพร้อมเพย์</div>` : ''}
+          ${!codOk ? `<div class="tag-muted" style="margin-top:4px">เก็บเงินปลายทางให้บริการเฉพาะน้ำหนักรวมไม่เกิน ${DB.COD_MAX_KG} กก. คำสั่งซื้อนี้เกินกำหนด จึงรองรับเฉพาะพร้อมเพย์</div>` : ''}
         </div>
 
         ${overLimit ? `<div class="error-text">น้ำหนักรวมเกิน 20 กก. ระบบยังไม่มีเกณฑ์ค่าส่งอัตโนมัติ กรุณาติดต่อร้านโดยตรงเพื่อสอบถามค่าจัดส่งก่อนสั่งซื้อ</div>` : ''}
@@ -713,6 +716,11 @@
           <div class="qr-amount">฿${grandTotal.toLocaleString()}</div>
           <div class="qr-hint">สแกนจ่ายผ่านแอปธนาคารใดก็ได้ (PromptPay) — ยอดนี้รวมค่าจัดส่ง ฿${shippingFee.toLocaleString()} แล้ว<br>แอดมินจะตรวจสอบสลิปการโอนของท่านหลังยืนยันคำสั่งซื้อ</div>
         </div>
+        <div class="field" style="max-width:340px;margin:14px auto 0">
+          <label>แนบสลิปโอนเงิน (แนะนำ — ช่วยให้แอดมินตรวจสอบไวขึ้น ไม่บังคับ)</label>
+          <input type="file" accept="image/*" id="slipInput">
+          ${checkoutSlipDataUrl ? `<div style="margin-top:8px"><img src="${checkoutSlipDataUrl}" alt="" style="max-width:120px;border-radius:8px;border:1px solid var(--border)"></div>` : ''}
+        </div>
         <div style="display:flex;gap:10px;margin-top:14px;">
           <button class="btn" id="btnBack1">‹ กลับ</button>
           <button class="btn btn-primary btn-block" id="btnGoAddress">ถัดไป: กรอกที่อยู่จัดส่ง</button>
@@ -721,6 +729,13 @@
       new QRCode(document.getElementById('qrHolder'), {
         text: payload, width: 220, height: 220, colorDark: '#26241f', colorLight: '#ffffff',
         correctLevel: QRCode.CorrectLevel.M,
+      });
+      document.getElementById('slipInput').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => { checkoutSlipDataUrl = ev.target.result; renderCheckout(); };
+        reader.readAsDataURL(file);
       });
       document.getElementById('btnBack1').addEventListener('click', () => { checkoutStep = 1; renderCheckout(); });
       document.getElementById('btnGoAddress').addEventListener('click', () => { checkoutStep = 3; renderCheckout(); });
@@ -810,10 +825,12 @@
       customer: { name, phone, lineId, address, subdistrict, district, province, zipcode },
       paymentMethod: checkoutPaymentMethod,
       promoCode: checkoutPromo ? checkoutPromo.code : null,
+      paymentSlip: checkoutSlipDataUrl,
     });
     setCart([]);
     checkoutPromo = null;
     checkoutPaymentMethod = 'promptpay';
+    checkoutSlipDataUrl = null;
     checkoutStep = 4;
     renderCheckout();
     renderGrid();

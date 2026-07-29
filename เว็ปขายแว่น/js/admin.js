@@ -1125,11 +1125,87 @@
   }
 
   // ================= Orders =================
-  const NEXT_LABEL = {
-    1: 'ยืนยันตรวจสลิปแล้ว → ไปขั้นตอน "รอยืนยันเบอร์โทร"',
-    2: 'ยืนยันเบอร์โทร/ที่อยู่แล้ว → ไปขั้นตอน "แพ็คแล้ว"',
-    3: 'แพ็คสินค้าเสร็จแล้ว → ไปขั้นตอน "จัดส่งแล้ว"',
-  };
+  function renderOrderActionsHtml(o) {
+    if (o.status === 1) {
+      const slipHtml = o.paymentSlip
+        ? `<div style="margin-bottom:10px">
+             <div class="tag-muted" style="margin-bottom:4px">สลิปโอนเงินที่ลูกค้าแนบมา (คลิกเพื่อดูขนาดเต็ม):</div>
+             <a href="${o.paymentSlip}" target="_blank"><img src="${o.paymentSlip}" style="max-width:200px;border-radius:8px;border:1px solid var(--border)"></a>
+           </div>`
+        : `<div class="tag-muted" style="margin-bottom:10px">ลูกค้าไม่ได้แนบสลิปมา — ตรวจสอบยอดโอนเข้าบัญชีร้านเองก่อนกดยืนยัน</div>`;
+      return `${slipHtml}<button class="btn btn-primary" data-advance="${o.id}">ตรวจสลิป/ยอดโอนแล้ว → ไปขั้นตอนโทรยืนยัน</button>`;
+    }
+    if (o.status === 2) {
+      const codNote = o.paymentMethod === 'cod' ? ' (ออเดอร์เก็บเงินปลายทาง ควรย้ำยอดที่ต้องชำระตอนรับของ ฿' + o.total.toLocaleString() + ' ด้วย)' : '';
+      return `
+        <div class="tag-muted" style="margin-bottom:8px">โทรยืนยันออเดอร์กับลูกค้าก่อน${codNote} แล้วค่อยกดพิมพ์ใบปะหน้า</div>
+        <button class="btn btn-primary" data-print-label="${o.id}">🖨 พิมพ์ใบปะหน้า (ยืนยันโทร + แพ็คแล้ว)</button>
+      `;
+    }
+    if (o.status === 3) {
+      return `
+        <div class="field" style="max-width:280px">
+          <label>เลข Tracking (บังคับกรอกก่อนยืนยันจัดส่ง)</label>
+          <input type="text" id="tracking-${o.id}" placeholder="เช่น TH0123456789">
+        </div>
+        <div class="error-text" id="tracking-err-${o.id}"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" data-print-label="${o.id}" type="button">🖨 พิมพ์ใบปะหน้าอีกครั้ง</button>
+          <button class="btn btn-primary" data-confirm-ship="${o.id}" type="button">ยืนยันจัดส่งแล้ว</button>
+        </div>
+      `;
+    }
+    // status 4 — จัดส่งแล้ว
+    if (o.paymentMethod === 'cod') {
+      if (!o.codDeliveryStatus) {
+        return `
+          <div class="tag-muted" style="margin-bottom:8px">ติดตามผลการส่ง COD:</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" data-cod-delivered="${o.id}" type="button">✓ ส่งสำเร็จ เก็บเงินได้แล้ว</button>
+            <button class="btn btn-danger" data-cod-returned="${o.id}" type="button">✗ ตีกลับ (คืนสต็อกอัตโนมัติ)</button>
+          </div>
+        `;
+      }
+      return o.codDeliveryStatus === 'delivered'
+        ? `<span class="status-pill status-3">ส่งสำเร็จ เก็บเงินแล้ว</span>`
+        : `<span class="status-pill status-1">ตีกลับ — คืนสต็อกให้อัตโนมัติแล้ว</span>`;
+    }
+    return `<span class="status-pill status-4">จัดส่งเรียบร้อยแล้ว</span>`;
+  }
+
+  function printShippingLabel(order) {
+    const win = window.open('', '_blank', 'width=420,height=650');
+    if (!win) { showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตแล้วลองใหม่'); return; }
+    const c = order.customer;
+    const weightKg = (DB.calcCartWeightGrams(order.items) / 1000).toFixed(1);
+    const codLine = order.paymentMethod === 'cod'
+      ? `<div class="cod-amount">เก็บเงินปลายทาง<br>฿${order.total.toLocaleString()}</div>`
+      : '';
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>ใบปะหน้า ${escapeHtml(order.orderNo)}</title>
+      <style>
+        @page { size: 4in 6in; margin: 0; }
+        body { margin:0; padding:0.25in; font-family: Arial, Tahoma, sans-serif; color:#000; width:3.5in; box-sizing:border-box; }
+        .shop { font-size:14px; font-weight:bold; border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:8px; }
+        .order-no { font-size:12px; margin-bottom:10px; }
+        .to-label { font-size:11px; color:#333; }
+        .to-name { font-size:20px; font-weight:bold; margin:2px 0; }
+        .to-phone { font-size:16px; font-weight:bold; margin-bottom:6px; }
+        .to-address { font-size:14px; line-height:1.5; }
+        .cod-amount { margin-top:14px; padding:10px; border:3px solid #000; text-align:center; font-size:20px; font-weight:bold; }
+        .items { margin-top:12px; font-size:11px; color:#333; border-top:1px dashed #000; padding-top:6px; }
+      </style></head><body>
+        <div class="shop">OptiHub (ศูนย์รวมแว่นตา OH)</div>
+        <div class="order-no">เลขที่ออเดอร์: ${escapeHtml(order.orderNo)}</div>
+        <div class="to-label">ส่งถึง</div>
+        <div class="to-name">${escapeHtml(c.name)}</div>
+        <div class="to-phone">โทร ${escapeHtml(c.phone)}${c.lineId ? ' · LINE: ' + escapeHtml(c.lineId) : ''}</div>
+        <div class="to-address">${escapeHtml(c.address)}<br>ต.${escapeHtml(c.subdistrict)} อ.${escapeHtml(c.district)}<br>จ.${escapeHtml(c.province)} ${escapeHtml(c.zipcode)}</div>
+        ${codLine}
+        <div class="items">${order.items.length} รายการ · น้ำหนักประมาณ ${weightKg} กก.</div>
+      </body></html>`);
+    win.document.close();
+    win.onload = () => win.print();
+  }
 
   function renderOrders() {
     const orders = DB.getOrders();
@@ -1153,6 +1229,7 @@
             <div><strong>รหัสไปรษณีย์:</strong> ${escapeHtml(o.customer.zipcode)}</div>
             <div><strong>ชำระเงิน:</strong> ${o.paymentMethod === 'cod' ? 'เก็บเงินปลายทาง (COD)' : 'พร้อมเพย์'}</div>
             <div><strong>คูปอง:</strong> ${o.promoCode ? escapeHtml(o.promoCode) : '-'}</div>
+            <div><strong>เลข Tracking:</strong> ${o.trackingNo ? escapeHtml(o.trackingNo) : '-'}</div>
             <div class="span2" style="grid-column:1/-1"><strong>ที่อยู่:</strong> ${escapeHtml(o.customer.address)} ต.${escapeHtml(o.customer.subdistrict)} อ.${escapeHtml(o.customer.district)} จ.${escapeHtml(o.customer.province)} ${escapeHtml(o.customer.zipcode)}</div>
           </div>
           <table><thead><tr><th>สินค้า</th><th>สี</th><th>จำนวน</th><th>ราคา</th></tr></thead>
@@ -1164,7 +1241,7 @@
             · รวม <strong style="color:var(--text)">฿${o.total.toLocaleString()}</strong>
           </div>
           <div class="order-actions" style="margin-top:14px">
-            ${o.status < 4 ? `<button class="btn btn-primary" data-advance="${o.id}">${NEXT_LABEL[o.status]}</button>` : `<span class="status-pill status-4">จัดส่งเรียบร้อยแล้ว</span>`}
+            ${renderOrderActionsHtml(o)}
           </div>
         </div>
       </div>
@@ -1182,6 +1259,48 @@
         DB.updateOrderStatus(o.id, DB.nextStatus(o.status));
         renderOrders();
         showToast('อัปเดตสถานะออเดอร์แล้ว');
+      });
+    });
+    wrap.querySelectorAll('[data-print-label]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const o = DB.getOrder(btn.dataset.printLabel);
+        printShippingLabel(o);
+        if (o.status === 2) {
+          DB.updateOrderStatus(o.id, 3);
+          renderOrders();
+          showToast('พิมพ์ใบปะหน้าแล้ว — มาร์คว่าแพ็คสินค้าเรียบร้อย');
+        }
+      });
+    });
+    wrap.querySelectorAll('[data-confirm-ship]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const oid = btn.dataset.confirmShip;
+        const input = document.getElementById(`tracking-${oid}`);
+        const err = document.getElementById(`tracking-err-${oid}`);
+        const trackingNo = input.value.trim();
+        if (!trackingNo) { err.textContent = 'กรุณากรอกเลข Tracking ก่อนยืนยันจัดส่ง'; return; }
+        DB.setTrackingAndShip(oid, trackingNo);
+        renderOrders();
+        showToast('บันทึกเลข Tracking และยืนยันจัดส่งแล้ว');
+      });
+    });
+    wrap.querySelectorAll('[data-cod-delivered]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        DB.markCodDelivered(btn.dataset.codDelivered);
+        renderOrders();
+        showToast('บันทึกผลส่งสำเร็จแล้ว');
+      });
+    });
+    wrap.querySelectorAll('[data-cod-returned]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!confirm('ยืนยันว่าออเดอร์นี้ตีกลับจริง? ระบบจะคืนสต็อกสินค้าทั้งหมดในออเดอร์นี้ให้อัตโนมัติ')) return;
+        DB.markCodReturned(btn.dataset.codReturned);
+        renderOrders();
+        showToast('บันทึกผลตีกลับและคืนสต็อกแล้ว');
       });
     });
   }
