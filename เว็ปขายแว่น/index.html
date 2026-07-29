@@ -10,7 +10,11 @@
 
 <header class="topbar">
   <div class="topbar-inner">
-    <div class="brand">แว่นตา<small>OPTICAL STORE</small></div>
+    <div class="brand">แว่นตา<small>OPTICAL STORE</small>
+      <a href="#" id="btnOpenStoreReviews" style="display:block;font-size:12px;font-weight:400;margin-top:2px;text-decoration:none">
+        <span id="storeRatingBadge"></span>
+      </a>
+    </div>
     <div class="topbar-search">
       <input type="text" id="headerSearch" placeholder="ค้นหารหัส/ชื่อ/แบรนด์...">
     </div>
@@ -43,7 +47,7 @@
   <div class="pagination" id="pagination"></div>
 </main>
 
-<footer class="site-footer">© ร้านแว่นตา — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="#" id="btnOpenReview">เขียนรีวิวสินค้าที่เคยสั่งซื้อ</a> · <a href="admin.html">แอดมิน</a></footer>
+<footer class="site-footer">© ร้านแว่นตา — ตัวอย่างเว็บไซต์ (ข้อมูลจำลองบนเบราว์เซอร์นี้) · <a href="#" id="btnOpenReview">เขียนรีวิวร้านค้า</a> · <a href="admin.html">แอดมิน</a></footer>
 
 <!-- ===== Filter Drawer ===== -->
 <div class="overlay" id="filterOverlay"></div>
@@ -131,14 +135,26 @@
   <div class="modal-panel">
     <button class="modal-close" data-close-modal="reviewModal">✕</button>
     <div style="padding:26px">
-      <h2 style="margin-top:0">เขียนรีวิวสินค้าที่เคยสั่งซื้อ</h2>
-      <p class="tag-muted" style="margin:0 0 14px">กรอกเบอร์โทรที่ใช้ตอนสั่งซื้อ เพื่อดูรายการสินค้าที่จัดส่งแล้วและยังไม่เคยรีวิว</p>
+      <h2 style="margin-top:0">เขียนรีวิวร้านค้า</h2>
+      <p class="tag-muted" style="margin:0 0 14px">กรอกเบอร์โทรที่ใช้ตอนสั่งซื้อ เพื่อดูออเดอร์ที่จัดส่งแล้วและยังไม่เคยรีวิว (รีวิวได้ 1 ครั้งต่อออเดอร์)</p>
       <div style="display:flex;gap:8px;max-width:340px">
         <input type="tel" id="reviewPhoneInput" placeholder="เบอร์โทรที่ใช้ตอนสั่งซื้อ" maxlength="10">
         <button class="btn" id="btnReviewLookup" type="button">ค้นหา</button>
       </div>
       <div class="error-text" id="reviewLookupMsg"></div>
       <div id="reviewableList" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Store Reviews List ===== -->
+<div class="modal" id="storeReviewsModal">
+  <div class="modal-backdrop" data-close-modal="storeReviewsModal"></div>
+  <div class="modal-panel">
+    <button class="modal-close" data-close-modal="storeReviewsModal">✕</button>
+    <div style="padding:26px">
+      <h2 style="margin-top:0">รีวิวจากลูกค้า</h2>
+      <div class="review-list" id="storeReviewList" style="max-height:420px"></div>
     </div>
   </div>
 </div>
