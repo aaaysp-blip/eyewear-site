@@ -79,6 +79,7 @@
     if (view === 'restock') renderRestockView();
     if (view === 'orders') renderOrders();
     if (view === 'crm') renderCrm();
+    if (view === 'reviews') renderReviews();
     if (view === 'promotions') renderPromotions();
     if (view === 'newProduct') {
       document.getElementById('npCode').placeholder = DB.generateNextCode();
@@ -1355,6 +1356,77 @@
     wrap.querySelectorAll('.crm-row').forEach(row => {
       row.addEventListener('click', () => {
         document.getElementById(row.dataset.toggle).classList.toggle('show');
+      });
+    });
+  }
+
+  // ================= Reviews =================
+  function renderReviews() {
+    const reviews = DB.getReviews();
+    const wrap = document.getElementById('reviewsBody');
+    if (!reviews.length) {
+      wrap.innerHTML = `<div class="panel"><div class="tag-muted">ยังไม่มีรีวิวจากลูกค้า</div></div>`;
+      return;
+    }
+    wrap.innerHTML = reviews.map(r => {
+      const order = DB.getOrder(r.orderId);
+      return `
+      <div class="panel" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div><strong>${escapeHtml(r.customerName)}</strong><span class="tag-muted"> · ${escapeHtml(r.phone)}${order ? ' · ออเดอร์ ' + escapeHtml(order.orderNo) : ''}</span></div>
+          <span class="tag-muted">${new Date(r.createdAt).toLocaleDateString('th-TH')}</span>
+        </div>
+        <div id="review-view-${r.id}" style="margin-top:8px">
+          <div class="star-picker" style="pointer-events:none">${[1, 2, 3, 4, 5].map(n => `<span class="${n <= r.rating ? 'on' : ''}">★</span>`).join('')}</div>
+          <div style="margin-top:6px">${r.comment ? escapeHtml(r.comment) : '<span class="tag-muted">— ไม่มีความคิดเห็นเพิ่มเติม —</span>'}</div>
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn btn-sm" data-edit-review="${r.id}" type="button">แก้ไข</button>
+            <button class="btn btn-sm btn-danger" data-delete-review="${r.id}" type="button">ลบ</button>
+          </div>
+        </div>
+        <div id="review-edit-${r.id}" style="display:none;margin-top:8px">
+          <div class="field"><label>คะแนน</label>
+            <select id="review-rating-${r.id}">
+              ${[5, 4, 3, 2, 1].map(n => `<option value="${n}" ${n === r.rating ? 'selected' : ''}>${n} ดาว</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>ความคิดเห็น</label><textarea id="review-comment-${r.id}">${escapeHtml(r.comment)}</textarea></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" data-save-review="${r.id}" type="button">บันทึก</button>
+            <button class="btn btn-sm" data-cancel-review="${r.id}" type="button">ยกเลิก</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('[data-edit-review]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('review-view-' + btn.dataset.editReview).style.display = 'none';
+        document.getElementById('review-edit-' + btn.dataset.editReview).style.display = 'block';
+      });
+    });
+    wrap.querySelectorAll('[data-cancel-review]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('review-edit-' + btn.dataset.cancelReview).style.display = 'none';
+        document.getElementById('review-view-' + btn.dataset.cancelReview).style.display = 'block';
+      });
+    });
+    wrap.querySelectorAll('[data-save-review]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.saveReview;
+        const rating = document.getElementById('review-rating-' + id).value;
+        const comment = document.getElementById('review-comment-' + id).value;
+        DB.updateReview(id, { rating, comment });
+        showToast('บันทึกการแก้ไขรีวิวแล้ว');
+        renderReviews();
+      });
+    });
+    wrap.querySelectorAll('[data-delete-review]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!confirm('ลบรีวิวนี้แน่ใจไหม? กู้คืนไม่ได้')) return;
+        DB.deleteReview(btn.dataset.deleteReview);
+        showToast('ลบรีวิวแล้ว');
+        renderReviews();
       });
     });
   }

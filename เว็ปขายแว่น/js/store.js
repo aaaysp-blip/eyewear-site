@@ -523,31 +523,51 @@
     document.getElementById('storeReviewsModal').classList.add('show');
   });
 
-  // ---------------- เช็คสถานะออเดอร์ (เบอร์โทร + เลขที่ออเดอร์ → สถานะ/ขนส่ง/เลข Tracking) ----------------
+  // ---------------- เช็คสถานะออเดอร์ (เบอร์โทร → เลือกออเดอร์จากวันที่สั่ง → สถานะ/ขนส่ง/เลข Tracking) ----------------
   const trackingModal = document.getElementById('trackingModal');
   document.getElementById('btnOpenTracking').addEventListener('click', e => {
     e.preventDefault();
     document.getElementById('trackPhoneInput').value = '';
-    document.getElementById('trackOrderNoInput').value = '';
     document.getElementById('trackLookupMsg').textContent = '';
+    document.getElementById('trackOrderList').innerHTML = '';
     document.getElementById('trackResult').innerHTML = '';
     trackingModal.classList.add('show');
   });
 
   document.getElementById('btnTrackLookup').addEventListener('click', runTrackLookup);
-  document.getElementById('trackOrderNoInput').addEventListener('keydown', e => { if (e.key === 'Enter') runTrackLookup(); });
+  document.getElementById('trackPhoneInput').addEventListener('keydown', e => { if (e.key === 'Enter') runTrackLookup(); });
 
   function runTrackLookup() {
     const phone = document.getElementById('trackPhoneInput').value.trim();
-    const orderNo = document.getElementById('trackOrderNoInput').value.trim();
     const msg = document.getElementById('trackLookupMsg');
-    const result = document.getElementById('trackResult');
-    if (!/^0\d{8,9}$/.test(phone)) { msg.textContent = 'กรุณากรอกเบอร์โทรให้ถูกต้อง'; result.innerHTML = ''; return; }
-    if (!orderNo) { msg.textContent = 'กรุณากรอกเลขที่ออเดอร์'; result.innerHTML = ''; return; }
-    const order = DB.findOrderForTracking(phone, orderNo);
-    if (!order) { msg.textContent = 'ไม่พบออเดอร์ที่ตรงกับเบอร์โทรและเลขที่ออเดอร์นี้ กรุณาตรวจสอบอีกครั้ง'; result.innerHTML = ''; return; }
+    const listWrap = document.getElementById('trackOrderList');
+    document.getElementById('trackResult').innerHTML = '';
+    if (!/^0\d{8,9}$/.test(phone)) { msg.textContent = 'กรุณากรอกเบอร์โทรให้ถูกต้อง'; listWrap.innerHTML = ''; return; }
+    const orders = DB.getOrdersForPhone(phone);
+    if (!orders.length) { msg.textContent = 'ไม่พบออเดอร์สำหรับเบอร์นี้'; listWrap.innerHTML = ''; return; }
     msg.textContent = '';
-    renderTrackResult(order);
+    renderTrackOrderList(orders);
+  }
+
+  function renderTrackOrderList(orders) {
+    const listWrap = document.getElementById('trackOrderList');
+    listWrap.innerHTML = `<div class="tag-muted" style="margin-bottom:8px">เลือกออเดอร์ที่ต้องการเช็คสถานะ:</div>` + orders.map(o => `
+      <div class="reviewable-card" data-track-order="${o.id}" style="cursor:pointer">
+        <div class="rp-head">
+          <div>
+            <div style="font-weight:600">ออเดอร์ ${escapeHtml(o.orderNo)}</div>
+            <div class="tag-muted" style="font-size:11.5px">สั่งเมื่อ ${new Date(o.createdAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })} · ${o.items.length} รายการ · ฿${o.total.toLocaleString()}</div>
+          </div>
+          <span class="status-pill status-${o.status}">${DB.STATUS[o.status]}</span>
+        </div>
+      </div>
+    `).join('');
+    listWrap.querySelectorAll('[data-track-order]').forEach(card => {
+      card.addEventListener('click', () => {
+        const order = orders.find(o => o.id === card.dataset.trackOrder);
+        renderTrackResult(order);
+      });
+    });
   }
 
   function renderTrackResult(o) {
@@ -555,21 +575,23 @@
     const stepDefs = [[1, 'รอตรวจสลิป'], [2, 'รอยืนยันเบอร์โทร'], [3, 'แพ็คแล้ว'], [4, 'จัดส่งแล้ว']];
     const orderDate = new Date(o.createdAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
     wrap.innerHTML = `
-      <div style="font-weight:600;font-size:16px">ออเดอร์ ${escapeHtml(o.orderNo)}</div>
-      <div class="tag-muted" style="margin:2px 0 12px">วันที่สั่งซื้อ: ${orderDate}</div>
-      <div class="steps" style="margin-bottom:14px">
-        ${stepDefs.map(([n, label], idx) => `
-          ${idx > 0 ? '<div class="step-sep"></div>' : ''}
-          <div class="step ${o.status === n ? 'active' : ''} ${o.status > n ? 'done' : ''}"><span class="num">${n}</span> ${escapeHtml(label)}</div>
-        `).join('')}
-      </div>
-      ${o.status === 4 ? `
-        <div class="order-meta-grid">
-          <div><strong>จัดส่งโดย:</strong> ${o.courier ? escapeHtml(DB.COURIERS[o.courier] || o.courier) : '-'}</div>
-          <div><strong>เลข Tracking:</strong> ${o.trackingNo ? escapeHtml(o.trackingNo) : '-'}</div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-weight:600;font-size:16px">ออเดอร์ ${escapeHtml(o.orderNo)}</div>
+        <div class="tag-muted" style="margin:2px 0 12px">วันที่สั่งซื้อ: ${orderDate}</div>
+        <div class="steps" style="margin-bottom:14px">
+          ${stepDefs.map(([n, label], idx) => `
+            ${idx > 0 ? '<div class="step-sep"></div>' : ''}
+            <div class="step ${o.status === n ? 'active' : ''} ${o.status > n ? 'done' : ''}"><span class="num">${n}</span> ${escapeHtml(label)}</div>
+          `).join('')}
         </div>
-        <div class="tag-muted" style="margin-top:8px;font-size:12.5px">นำเลข Tracking ไปเช็คสถานะการเดินทางของพัสดุได้ที่เว็บไซต์หรือแอปของขนส่งที่ระบุไว้ด้านบน</div>
-      ` : ''}
+        ${o.status === 4 ? `
+          <div class="order-meta-grid">
+            <div><strong>จัดส่งโดย:</strong> ${o.courier ? escapeHtml(DB.COURIERS[o.courier] || o.courier) : '-'}</div>
+            <div><strong>เลข Tracking:</strong> ${o.trackingNo ? escapeHtml(o.trackingNo) : '-'}</div>
+          </div>
+          <div class="tag-muted" style="margin-top:8px;font-size:12.5px">นำเลข Tracking ไปเช็คสถานะการเดินทางของพัสดุได้ที่เว็บไซต์หรือแอปของขนส่งที่ระบุไว้ด้านบน</div>
+        ` : ''}
+      </div>
     `;
   }
 

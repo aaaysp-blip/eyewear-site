@@ -288,11 +288,10 @@
     return o;
   }
 
-  // ค้นหาออเดอร์สำหรับหน้าเช็คสถานะฝั่งลูกค้า — ต้องตรงทั้งเบอร์โทรและเลขที่ออเดอร์ (กันคนอื่นเดาเลขออเดอร์แล้วดูของคนอื่นได้)
-  function findOrderForTracking(phone, orderNo) {
+  // ค้นหาออเดอร์ทั้งหมดของเบอร์นี้สำหรับหน้าเช็คสถานะฝั่งลูกค้า — ลูกค้าเลือกออเดอร์เองจากวันที่สั่ง (getOrders คืนค่าใหม่สุดก่อนอยู่แล้ว)
+  function getOrdersForPhone(phone) {
     const p = String(phone || '').trim();
-    const no = String(orderNo || '').trim().toLowerCase();
-    return getOrders().find(o => o.customer.phone === p && o.orderNo.toLowerCase() === no) || null;
+    return getOrders().filter(o => o.customer.phone === p);
   }
 
   // ผลการส่งของออเดอร์ COD: ส่งสำเร็จ (เก็บเงินได้จริง) หรือตีกลับ (คืนสต็อกให้อัตโนมัติ)
@@ -550,6 +549,18 @@
     write(KEYS.reviews, getReviews().filter(r => r.id !== id));
   }
 
+  // แก้ไขรีวิวจากฝั่งแอดมิน (คะแนน และ/หรือ ความคิดเห็น)
+  function updateReview(id, { rating, comment }) {
+    const reviews = getReviews();
+    const r = reviews.find(x => x.id === id);
+    if (!r) return null;
+    if (rating != null) r.rating = Math.max(1, Math.min(5, Math.round(Number(rating) || r.rating)));
+    if (comment != null) r.comment = String(comment).trim();
+    r.updatedAt = new Date().toISOString();
+    write(KEYS.reviews, reviews);
+    return r;
+  }
+
   // ---------- Config ----------
   function getConfig() { return read(KEYS.config, { promptpayId: '0000000000', lowStockThreshold: 2, adminPassword: 'admin1234' }); }
   function setConfig(cfg) { write(KEYS.config, Object.assign(getConfig(), cfg)); }
@@ -593,14 +604,14 @@
     placeholderImage,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
     generateNextCode, updateVariantStock, isNew,
-    STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, findOrderForTracking, markCodDelivered, markCodReturned,
+    STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, getOrdersForPhone, markCodDelivered, markCodReturned,
     getRestocks, getRestock, createRestock, updateRestockReceivedQty, confirmRestockReceive, pendingRestockCount,
     getCustomers, getCustomerByPhone, getCustomerStats,
     getConfig, setConfig,
     monthSales, pendingOrderCount, bestSellers, lowStockVariants,
     calcCartWeightGrams, calcShippingFee, isCodAvailable, unitWeightForProduct, UNIT_WEIGHT_EYEWEAR_G, UNIT_WEIGHT_ACCESSORY_G, COD_MAX_KG, COD_FEE,
     getPromotions, getPromotion, getPromotionByCode, createPromotion, setPromotionActive, deletePromotion, applyPromotion, redeemPromotion,
-    getReviews, getStoreRatingSummary, getReviewableOrdersForPhone, submitReview, deleteReview,
+    getReviews, getStoreRatingSummary, getReviewableOrdersForPhone, submitReview, deleteReview, updateReview,
     uid,
   };
 })(window);
