@@ -1177,31 +1177,42 @@
     const win = window.open('', '_blank', 'width=420,height=650');
     if (!win) { showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตแล้วลองใหม่'); return; }
     const c = order.customer;
-    const weightKg = (DB.calcCartWeightGrams(order.items) / 1000).toFixed(1);
+    const cfg = DB.getConfig();
     const codLine = order.paymentMethod === 'cod'
       ? `<div class="cod-amount">เก็บเงินปลายทาง<br>฿${order.total.toLocaleString()}</div>`
       : '';
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>ใบปะหน้า ${escapeHtml(order.orderNo)}</title>
       <style>
         @page { size: 4in 6in; margin: 0; }
-        body { margin:0; padding:0.25in; font-family: Arial, Tahoma, sans-serif; color:#000; width:3.5in; box-sizing:border-box; }
-        .shop { font-size:14px; font-weight:bold; border-bottom:2px solid #000; padding-bottom:6px; margin-bottom:8px; }
-        .order-no { font-size:12px; margin-bottom:10px; }
-        .to-label { font-size:11px; color:#333; }
-        .to-name { font-size:20px; font-weight:bold; margin:2px 0; }
-        .to-phone { font-size:16px; font-weight:bold; margin-bottom:6px; }
+        body { margin:0; padding:0.2in; font-family: Arial, Tahoma, sans-serif; color:#000; width:3.6in; box-sizing:border-box; }
+        .label-box { border:2px solid #000; border-radius:4px; overflow:hidden; }
+        .order-strip { display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-bottom:2px solid #000; font-size:11px; }
+        .order-strip .brand { font-weight:bold; font-size:13px; }
+        .section { padding:8px 10px; }
+        .section + .section { border-top:2px dashed #000; }
+        .sec-label { font-size:10px; letter-spacing:0.05em; color:#333; margin-bottom:3px; }
+        .from-name { font-size:13px; font-weight:bold; }
+        .from-detail { font-size:11px; line-height:1.4; color:#222; }
+        .to-name { font-size:21px; font-weight:bold; margin:2px 0; }
+        .to-phone { font-size:16px; font-weight:bold; margin-bottom:4px; }
         .to-address { font-size:14px; line-height:1.5; }
-        .cod-amount { margin-top:14px; padding:10px; border:3px solid #000; text-align:center; font-size:20px; font-weight:bold; }
-        .items { margin-top:12px; font-size:11px; color:#333; border-top:1px dashed #000; padding-top:6px; }
+        .cod-amount { margin:8px 10px 0; padding:10px; border:3px solid #000; text-align:center; font-size:20px; font-weight:bold; }
       </style></head><body>
-        <div class="shop">OptiHub (ศูนย์รวมแว่นตา OH)</div>
-        <div class="order-no">เลขที่ออเดอร์: ${escapeHtml(order.orderNo)}</div>
-        <div class="to-label">ส่งถึง</div>
-        <div class="to-name">${escapeHtml(c.name)}</div>
-        <div class="to-phone">โทร ${escapeHtml(c.phone)}${c.lineId ? ' · LINE: ' + escapeHtml(c.lineId) : ''}</div>
-        <div class="to-address">${escapeHtml(c.address)}<br>ต.${escapeHtml(c.subdistrict)} อ.${escapeHtml(c.district)}<br>จ.${escapeHtml(c.province)} ${escapeHtml(c.zipcode)}</div>
+        <div class="label-box">
+          <div class="order-strip"><span class="brand">OptiHub</span><span>เลขที่ออเดอร์ ${escapeHtml(order.orderNo)}</span></div>
+          <div class="section">
+            <div class="sec-label">ผู้ส่ง (FROM)</div>
+            <div class="from-name">OptiHub (ศูนย์รวมแว่นตา OH)</div>
+            <div class="from-detail">${cfg.shopAddress ? escapeHtml(cfg.shopAddress) : '<span style="color:#999">— ยังไม่ได้ตั้งค่าที่อยู่ร้าน —</span>'}${cfg.shopPhone ? '<br>โทร ' + escapeHtml(cfg.shopPhone) : ''}</div>
+          </div>
+          <div class="section">
+            <div class="sec-label">ผู้รับ (TO)</div>
+            <div class="to-name">${escapeHtml(c.name)}</div>
+            <div class="to-phone">โทร ${escapeHtml(c.phone)}${c.lineId ? ' · LINE: ' + escapeHtml(c.lineId) : ''}</div>
+            <div class="to-address">${escapeHtml(c.address)}<br>ต.${escapeHtml(c.subdistrict)} อ.${escapeHtml(c.district)}<br>จ.${escapeHtml(c.province)} ${escapeHtml(c.zipcode)}</div>
+          </div>
+        </div>
         ${codLine}
-        <div class="items">${order.items.length} รายการ · น้ำหนักประมาณ ${weightKg} กก.</div>
       </body></html>`);
     win.document.close();
     win.onload = () => win.print();
@@ -1397,8 +1408,10 @@
     document.getElementById('btnSaveSettings').addEventListener('click', () => {
       const promptpayId = document.getElementById('stPromptpay').value.trim();
       const lowStockThreshold = Math.max(0, parseInt(document.getElementById('stThreshold').value, 10) || 0);
+      const shopPhone = document.getElementById('stShopPhone').value.trim();
+      const shopAddress = document.getElementById('stShopAddress').value.trim();
       const newPassword = document.getElementById('stPassword').value.trim();
-      const patch = { promptpayId, lowStockThreshold };
+      const patch = { promptpayId, lowStockThreshold, shopPhone, shopAddress };
       if (newPassword) patch.adminPassword = newPassword;
       DB.setConfig(patch);
       document.getElementById('stPassword').value = '';
@@ -1411,5 +1424,7 @@
     const cfg = DB.getConfig();
     document.getElementById('stPromptpay').value = cfg.promptpayId;
     document.getElementById('stThreshold').value = cfg.lowStockThreshold;
+    document.getElementById('stShopPhone').value = cfg.shopPhone || '';
+    document.getElementById('stShopAddress').value = cfg.shopAddress || '';
   }
 })();

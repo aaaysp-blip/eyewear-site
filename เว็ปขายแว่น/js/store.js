@@ -717,7 +717,7 @@
           <div class="qr-hint">สแกนจ่ายผ่านแอปธนาคารใดก็ได้ (PromptPay) — ยอดนี้รวมค่าจัดส่ง ฿${shippingFee.toLocaleString()} แล้ว<br>แอดมินจะตรวจสอบสลิปการโอนของท่านหลังยืนยันคำสั่งซื้อ</div>
         </div>
         <div class="field" style="max-width:340px;margin:14px auto 0">
-          <label>แนบสลิปโอนเงิน (แนะนำ — ช่วยให้แอดมินตรวจสอบไวขึ้น ไม่บังคับ)</label>
+          <label>แนบสลิปโอนเงิน<br><span class="tag-muted" style="font-weight:400">(แนะนำ — ช่วยให้แอดมินตรวจสอบไวขึ้น ไม่บังคับ)</span></label>
           <input type="file" accept="image/*" id="slipInput">
           ${checkoutSlipDataUrl ? `<div style="margin-top:8px"><img src="${checkoutSlipDataUrl}" alt="" style="max-width:120px;border-radius:8px;border:1px solid var(--border)"></div>` : ''}
         </div>
@@ -745,14 +745,14 @@
     if (checkoutStep === 3) {
       body.innerHTML = `
         <div class="form-grid">
+          <div class="field span2"><label>เบอร์โทร *</label><input type="tel" id="adPhone" maxlength="10" placeholder="08xxxxxxxx"></div>
           <div class="field"><label>ชื่อ-นามสกุลผู้รับ *</label><input type="text" id="adName"></div>
-          <div class="field"><label>เบอร์โทร *</label><input type="tel" id="adPhone" maxlength="10" placeholder="08xxxxxxxx"></div>
           <div class="field"><label>LINE ID (สำรอง)</label><input type="text" id="adLine"></div>
-          <div class="field"><label>รหัสไปรษณีย์ *</label><input type="text" id="adZip" maxlength="5"></div>
           <div class="field span2"><label>ที่อยู่ (บ้านเลขที่ ถนน ซอย) *</label><input type="text" id="adAddress"></div>
           <div class="field"><label>แขวง/ตำบล *</label><input type="text" id="adSubdistrict"></div>
           <div class="field"><label>เขต/อำเภอ *</label><input type="text" id="adDistrict"></div>
-          <div class="field span2"><label>จังหวัด *</label><input type="text" id="adProvince"></div>
+          <div class="field"><label>จังหวัด *</label><input type="text" id="adProvince"></div>
+          <div class="field"><label>รหัสไปรษณีย์ *</label><input type="text" id="adZip" maxlength="5"></div>
         </div>
         <div class="error-text" id="addressError"></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
@@ -760,6 +760,20 @@
           <button class="btn btn-primary btn-block" id="btnConfirmOrder">ยืนยันคำสั่งซื้อ</button>
         </div>
       `;
+      document.getElementById('adPhone').addEventListener('blur', () => {
+        const phone = document.getElementById('adPhone').value.trim();
+        if (!/^0\d{8,9}$/.test(phone)) return;
+        const cust = DB.getCustomerByPhone(phone);
+        if (!cust) return;
+        document.getElementById('adName').value = cust.name || '';
+        document.getElementById('adLine').value = cust.lineId || '';
+        document.getElementById('adAddress').value = cust.address || '';
+        document.getElementById('adSubdistrict').value = cust.subdistrict || '';
+        document.getElementById('adDistrict').value = cust.district || '';
+        document.getElementById('adProvince').value = cust.province || '';
+        document.getElementById('adZip').value = cust.zipcode || '';
+        showToast('พบข้อมูลลูกค้าเดิม เติมให้อัตโนมัติแล้ว (แก้ไขได้ถ้าต้องการเปลี่ยน)');
+      });
       document.getElementById('btnBack2').addEventListener('click', () => { checkoutStep = 2; renderCheckout(); });
       document.getElementById('btnConfirmOrder').addEventListener('click', submitOrder);
       return;
