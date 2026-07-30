@@ -637,8 +637,10 @@
 
   function cartTotal(cart) { return cart.reduce((s, i) => s + i.price * i.qty, 0); }
   function cartTotalQty(cart) { return cart.reduce((s, i) => s + i.qty, 0); }
-  function currentShippingFee(cart) { return checkoutPromo ? 0 : DB.calcShippingFee(cart); }
+  function currentShippingFee(cart) { return (checkoutPromo && (checkoutPromo.type || 'freeship') === 'freeship') ? 0 : DB.calcShippingFee(cart); }
   function currentCodFee() { return checkoutPaymentMethod === 'cod' ? DB.COD_FEE : 0; }
+  function currentSmallOrderFee(cart) { return DB.calcSmallOrderFee(cart); }
+  function currentPromoDiscount() { return (checkoutPromo && checkoutPromo.type === 'amount') ? (checkoutPromo.discountAmount || 0) : 0; }
 
   function renderCheckout() {
     setStepUI(checkoutStep);
@@ -654,11 +656,13 @@
       const totalQty = cartTotalQty(cart);
       const totalWeightKg = DB.calcCartWeightGrams(cart) / 1000;
       const shippingFee = currentShippingFee(cart);
+      const smallOrderFee = currentSmallOrderFee(cart);
+      const discountAmount = currentPromoDiscount();
       const codOk = DB.isCodAvailable(cart);
       if (!codOk && checkoutPaymentMethod === 'cod') checkoutPaymentMethod = 'promptpay';
       const codFee = currentCodFee();
-      const grandTotal = subtotal + (shippingFee || 0) + codFee;
       const overLimit = shippingFee == null;
+      const grandTotal = overLimit ? null : Math.max(0, subtotal + shippingFee + smallOrderFee + codFee - discountAmount);
 
       body.innerHTML = `
         ${cart.map((it, idx) => `
@@ -678,14 +682,14 @@
         `).join('')}
 
         <div class="field" style="margin-top:14px;max-width:340px">
-          <label>คูปองส่งฟรี (ถ้ามี)</label>
+          <label>คูปองส่วนลด (ถ้ามี)</label>
           <div style="display:flex;gap:8px">
             <input type="text" id="promoInput" placeholder="กรอกโค้ด" value="${checkoutPromo ? checkoutPromo.code : ''}" ${checkoutPromo ? 'disabled' : ''}>
             ${checkoutPromo
               ? `<button class="btn btn-sm btn-danger" id="btnRemovePromo" type="button">ยกเลิก</button>`
               : `<button class="btn btn-sm" id="btnApplyPromo" type="button">ใช้คูปอง</button>`}
           </div>
-          <div class="error-text" id="promoMsg">${checkoutPromo ? 'ใช้คูปองส่งฟรีแล้ว ✓' : ''}</div>
+          <div class="error-text" id="promoMsg">${checkoutPromo ? ((checkoutPromo.type || 'freeship') === 'amount' ? `ใช้ส่วนลด ฿${(checkoutPromo.discountAmount || 0).toLocaleString()} แล้ว ✓` : 'ใช้คูปองส่งฟรีแล้ว ✓') : ''}</div>
         </div>
 
         <div class="cart-summary-total" style="flex-direction:column;align-items:stretch;gap:5px">
@@ -694,7 +698,9 @@
             <span>ค่าจัดส่ง (${totalWeightKg.toFixed(1)} กก.)</span>
             <span>${overLimit ? 'ติดต่อร้าน' : (shippingFee === 0 ? 'ฟรี' : '฿' + shippingFee.toLocaleString())}</span>
           </div>
+          ${smallOrderFee ? `<div style="display:flex;justify-content:space-between"><span>ค่าบริการออเดอร์เล็ก (ต่ำกว่า ${DB.SMALL_ORDER_MIN_QTY} ชิ้น)</span><span>฿${smallOrderFee.toLocaleString()}</span></div>` : ''}
           ${codFee ? `<div style="display:flex;justify-content:space-between"><span>ค่าบริการเก็บเงินปลายทาง</span><span>฿${codFee.toLocaleString()}</span></div>` : ''}
+          ${discountAmount ? `<div style="display:flex;justify-content:space-between"><span>ส่วนลด</span><span>−฿${discountAmount.toLocaleString()}</span></div>` : ''}
           <div style="display:flex;justify-content:space-between;font-weight:700;font-size:16px;border-top:1px solid var(--border);padding-top:6px">
             <span>ยอดรวมทั้งหมด</span><span>฿${overLimit ? subtotal.toLocaleString() + ' +ค่าส่ง' : grandTotal.toLocaleString()}</span>
           </div>
@@ -760,15 +766,21 @@
     if (checkoutStep === 2) {
       const subtotal = cartTotal(cart);
       const shippingFee = currentShippingFee(cart) || 0;
+      const smallOrderFee = currentSmallOrderFee(cart);
+      const discountAmount = currentPromoDiscount();
       const codFee = currentCodFee();
-      const grandTotal = subtotal + shippingFee + codFee;
+      const grandTotal = Math.max(0, subtotal + shippingFee + smallOrderFee + codFee - discountAmount);
+      const extraFeesNote = [
+        shippingFee ? `ค่าจัดส่ง ฿${shippingFee.toLocaleString()}` : null,
+        smallOrderFee ? `ค่าบริการออเดอร์เล็ก ฿${smallOrderFee.toLocaleString()}` : null,
+      ].filter(Boolean).join(' และ ');
 
       if (checkoutPaymentMethod === 'cod') {
         body.innerHTML = `
           <div class="qr-box">
             <div style="font-size:40px">📦</div>
             <div class="qr-amount">฿${grandTotal.toLocaleString()}</div>
-            <div class="qr-hint">ชำระเงินปลายทางกับพนักงานจัดส่งเมื่อได้รับสินค้า<br>(รวมค่าจัดส่ง ฿${shippingFee.toLocaleString()} และค่าบริการเก็บเงินปลายทาง ฿${codFee.toLocaleString()} แล้ว)</div>
+            <div class="qr-hint">ชำระเงินปลายทางกับพนักงานจัดส่งเมื่อได้รับสินค้า<br>(รวม${extraFeesNote ? extraFeesNote + ' และ' : ''}ค่าบริการเก็บเงินปลายทาง ฿${codFee.toLocaleString()} แล้ว)</div>
           </div>
           <div style="display:flex;gap:10px;margin-top:14px;">
             <button class="btn" id="btnBack1">‹ กลับ</button>
@@ -786,7 +798,7 @@
         <div class="qr-box">
           <div id="qrHolder" style="display:inline-block;background:#fff;padding:16px;border-radius:12px;border:1px solid var(--border)"></div>
           <div class="qr-amount">฿${grandTotal.toLocaleString()}</div>
-          <div class="qr-hint">สแกนจ่ายผ่านแอปธนาคารใดก็ได้ (PromptPay) — ยอดนี้รวมค่าจัดส่ง ฿${shippingFee.toLocaleString()} แล้ว<br>แอดมินจะตรวจสอบสลิปการโอนของท่านหลังยืนยันคำสั่งซื้อ</div>
+          <div class="qr-hint">สแกนจ่ายผ่านแอปธนาคารใดก็ได้ (PromptPay) — ยอดนี้รวม${extraFeesNote || 'ค่าจัดส่ง'}แล้ว<br>แอดมินจะตรวจสอบสลิปการโอนของท่านหลังยืนยันคำสั่งซื้อ</div>
         </div>
         <div class="field" style="max-width:340px;margin:14px auto 0">
           <label>แนบสลิปโอนเงิน<br><span class="tag-muted" style="font-weight:400">(แนะนำ — ช่วยให้แอดมินตรวจสอบไวขึ้น ไม่บังคับ)</span></label>
@@ -900,13 +912,17 @@
     if (!cart.length) return;
     const subtotal = cartTotal(cart);
     const shippingFee = currentShippingFee(cart) || 0;
+    const smallOrderFee = currentSmallOrderFee(cart);
+    const discountAmount = currentPromoDiscount();
     const codFee = currentCodFee();
-    const total = subtotal + shippingFee + codFee;
+    const total = Math.max(0, subtotal + shippingFee + smallOrderFee + codFee - discountAmount);
     lastOrder = DB.createOrder({
       items: cart,
       subtotal,
       shippingFee,
+      smallOrderFee,
       codFee,
+      discountAmount,
       total,
       customer: { name, phone, lineId, address, subdistrict, district, province, zipcode },
       paymentMethod: checkoutPaymentMethod,

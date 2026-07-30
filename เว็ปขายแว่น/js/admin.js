@@ -1226,6 +1226,60 @@
     win.onload = () => win.print();
   }
 
+  function printReceipt(order) {
+    const win = window.open('', '_blank', 'width=420,height=650');
+    if (!win) { showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตแล้วลองใหม่'); return; }
+    const c = order.customer;
+    const cfg = DB.getConfig();
+    const subtotal = order.subtotal != null ? order.subtotal : order.total;
+    const rows = order.items.map(it => `
+      <tr>
+        <td>${escapeHtml(it.code)} ${escapeHtml(it.name)} (${escapeHtml(it.color)})</td>
+        <td style="text-align:center">${it.qty}</td>
+        <td style="text-align:right">฿${it.price.toLocaleString()}</td>
+        <td style="text-align:right">฿${(it.price * it.qty).toLocaleString()}</td>
+      </tr>`).join('');
+    const feeRow = (label, amount, negative) => amount
+      ? `<tr><td colspan="3" style="text-align:right">${label}</td><td style="text-align:right">${negative ? '−' : ''}฿${amount.toLocaleString()}</td></tr>`
+      : '';
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>ใบเสร็จรับเงิน ${escapeHtml(order.orderNo)}</title>
+      <style>
+        @page { size: 4in 6in; margin: 0; }
+        body { margin:0; padding:0.25in; font-family: Arial, Tahoma, sans-serif; color:#000; width:3.5in; box-sizing:border-box; font-size:12px; }
+        h1 { font-size:15px; margin:0 0 2px; }
+        .sub { font-size:11px; color:#333; margin-bottom:10px; }
+        table { width:100%; border-collapse:collapse; }
+        thead th { text-align:left; border-bottom:1px solid #000; padding:4px 2px; font-size:11px; }
+        tbody td, tfoot td { padding:3px 2px; font-size:11.5px; }
+        tfoot tr:last-child td { border-top:1px solid #000; font-weight:bold; font-size:13px; padding-top:6px; }
+        .meta { margin:10px 0; line-height:1.6; }
+      </style></head><body>
+        <h1>OptiHub (ศูนย์รวมแว่นตา OH)</h1>
+        <div class="sub">${cfg.shopAddress ? escapeHtml(cfg.shopAddress) : ''}${cfg.shopPhone ? ' · โทร ' + escapeHtml(cfg.shopPhone) : ''}</div>
+        <div class="meta">
+          <strong>ใบเสร็จรับเงิน</strong><br>
+          เลขที่ออเดอร์: ${escapeHtml(order.orderNo)}<br>
+          วันที่: ${new Date(order.createdAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}<br>
+          ลูกค้า: ${escapeHtml(c.name)} (โทร ${escapeHtml(c.phone)})<br>
+          ชำระเงิน: ${order.paymentMethod === 'cod' ? 'เก็บเงินปลายทาง (COD)' : 'พร้อมเพย์'}
+        </div>
+        <table>
+          <thead><tr><th>รายการ</th><th style="text-align:center">จำนวน</th><th style="text-align:right">ราคา/ชิ้น</th><th style="text-align:right">รวม</th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr><td colspan="3" style="text-align:right">ยอดสินค้า</td><td style="text-align:right">฿${subtotal.toLocaleString()}</td></tr>
+            ${feeRow('ค่าจัดส่ง', order.shippingFee)}
+            ${feeRow('ค่าบริการออเดอร์เล็ก', order.smallOrderFee)}
+            ${feeRow('ค่าบริการเก็บเงินปลายทาง', order.codFee)}
+            ${feeRow('ส่วนลด' + (order.promoCode ? ' (' + escapeHtml(order.promoCode) + ')' : ''), order.discountAmount, true)}
+            <tr><td colspan="3" style="text-align:right">ยอดรวมสุทธิ</td><td style="text-align:right">฿${order.total.toLocaleString()}</td></tr>
+          </tfoot>
+        </table>
+      </body></html>`);
+    win.document.close();
+    win.onload = () => win.print();
+  }
+
   function renderOrders() {
     const orders = DB.getOrders();
     const wrap = document.getElementById('orderList');
@@ -1257,11 +1311,14 @@
           <div style="text-align:right;font-size:13px;margin-top:8px;color:var(--text-muted)">
             ยอดสินค้า ฿${(o.subtotal != null ? o.subtotal : o.total).toLocaleString()}
             · ค่าส่ง ${o.shippingFee ? '฿' + o.shippingFee.toLocaleString() : 'ฟรี'}
+            ${o.smallOrderFee ? ` · ค่าบริการออเดอร์เล็ก ฿${o.smallOrderFee.toLocaleString()}` : ''}
             ${o.codFee ? ` · ค่าบริการ COD ฿${o.codFee.toLocaleString()}` : ''}
+            ${o.discountAmount ? ` · ส่วนลด −฿${o.discountAmount.toLocaleString()}` : ''}
             · รวม <strong style="color:var(--text)">฿${o.total.toLocaleString()}</strong>
           </div>
           <div class="order-actions" style="margin-top:14px">
             ${renderOrderActionsHtml(o)}
+            <button class="btn btn-sm" data-print-receipt="${o.id}" type="button" style="margin-top:8px">🧾 ออกใบเสร็จรับเงิน</button>
           </div>
         </div>
       </div>
@@ -1307,6 +1364,13 @@
         DB.setTrackingAndShip(oid, trackingNo, courier);
         renderOrders();
         showToast('บันทึกเลข Tracking และยืนยันจัดส่งแล้ว');
+      });
+    });
+    wrap.querySelectorAll('[data-print-receipt]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const o = DB.getOrder(btn.dataset.printReceipt);
+        printReceipt(o);
       });
     });
     wrap.querySelectorAll('[data-cod-delivered]').forEach(btn => {
@@ -1436,12 +1500,16 @@
     const promos = DB.getPromotions();
     const wrap = document.getElementById('promoBody');
     if (!promos.length) {
-      wrap.innerHTML = `<tr><td colspan="6" class="tag-muted">ยังไม่มีโค้ดโปรโมชั่น</td></tr>`;
+      wrap.innerHTML = `<tr><td colspan="7" class="tag-muted">ยังไม่มีโค้ดโปรโมชั่น</td></tr>`;
       return;
     }
-    wrap.innerHTML = promos.map(p => `
+    wrap.innerHTML = promos.map(p => {
+      const type = p.type || 'freeship'; // โค้ดเก่าก่อนมีฟีเจอร์นี้ ถือเป็นส่งฟรีตามเดิม
+      const typeLabel = type === 'amount' ? `ส่วนลด ฿${(p.discountAmount || 0).toLocaleString()}` : 'ส่งฟรี';
+      return `
       <tr>
         <td><strong>${escapeHtml(p.code)}</strong></td>
+        <td>${typeLabel}</td>
         <td>${p.maxUses}</td>
         <td>${p.timesApplied}</td>
         <td>${p.timesRedeemed} / ${p.maxUses}</td>
@@ -1451,7 +1519,8 @@
           <button class="btn btn-sm btn-danger" data-delete-promo="${p.id}" type="button">ลบ</button>
         </td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
     wrap.querySelectorAll('[data-toggle-promo]').forEach(btn => {
       btn.addEventListener('click', () => {
         DB.setPromotionActive(btn.dataset.togglePromo, btn.dataset.active === '1');
@@ -1468,19 +1537,30 @@
   }
 
   function setupPromotions() {
+    document.getElementById('promoType').addEventListener('change', e => {
+      document.getElementById('promoAmountField').style.display = e.target.value === 'amount' ? 'block' : 'none';
+    });
     document.getElementById('btnCreatePromo').addEventListener('click', () => {
       const codeEl = document.getElementById('promoCode');
       const maxUsesEl = document.getElementById('promoMaxUses');
+      const typeEl = document.getElementById('promoType');
+      const discountEl = document.getElementById('promoDiscountAmount');
       const err = document.getElementById('promoFormError');
       const code = codeEl.value.trim().toUpperCase();
       const maxUses = parseInt(maxUsesEl.value, 10);
+      const type = typeEl.value;
+      const discountAmount = parseInt(discountEl.value, 10);
       if (!code) { err.textContent = 'กรุณากรอกชื่อโค้ด'; return; }
       if (DB.getPromotionByCode(code)) { err.textContent = 'มีโค้ดนี้อยู่แล้ว กรุณาใช้ชื่ออื่น'; return; }
       if (!maxUses || maxUses < 1) { err.textContent = 'กรุณากรอกจำนวนสิทธิ์ให้ถูกต้อง'; return; }
+      if (type === 'amount' && (!discountAmount || discountAmount < 1)) { err.textContent = 'กรุณากรอกจำนวนเงินส่วนลดให้ถูกต้อง'; return; }
       err.textContent = '';
-      DB.createPromotion({ code, maxUses });
+      DB.createPromotion({ code, maxUses, type, discountAmount });
       codeEl.value = '';
       maxUsesEl.value = 50;
+      typeEl.value = 'freeship';
+      discountEl.value = '';
+      document.getElementById('promoAmountField').style.display = 'none';
       showToast(`สร้างโค้ด ${code} เรียบร้อย`);
       renderPromotions();
     });

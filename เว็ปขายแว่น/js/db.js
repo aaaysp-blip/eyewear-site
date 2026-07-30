@@ -222,7 +222,7 @@
   function getOrders() { return read(KEYS.orders, []); }
   function getOrder(id) { return getOrders().find(o => o.id === id) || null; }
 
-  function createOrder({ items, subtotal, shippingFee, codFee, total, customer, paymentMethod, promoCode, paymentSlip }) {
+  function createOrder({ items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer, paymentMethod, promoCode, paymentSlip }) {
     const orders = getOrders();
     const orderNo = 'OD' + Date.now().toString().slice(-8) + String(orders.length + 1).padStart(3, '0');
     const order = {
@@ -231,7 +231,9 @@
       items,
       subtotal: subtotal != null ? subtotal : total,
       shippingFee: shippingFee || 0,
+      smallOrderFee: smallOrderFee || 0,
       codFee: codFee || 0,
+      discountAmount: discountAmount || 0,
       total,
       customer,
       paymentMethod: paymentMethod || 'promptpay',
@@ -433,6 +435,13 @@
   ];
   const COD_MAX_KG = 2;
   const COD_FEE = 100; // ค่าบริการเก็บเงินปลายทาง บวกเพิ่มต่อออเดอร์
+  const SMALL_ORDER_MIN_QTY = 12; // ต่ำกว่านี้ (ชิ้น) จะเก็บค่าบริการออเดอร์เล็กเพิ่ม
+  const SMALL_ORDER_FEE = 50;
+
+  function calcSmallOrderFee(cartItems) {
+    const qty = (cartItems || []).reduce((s, it) => s + it.qty, 0);
+    return qty > 0 && qty < SMALL_ORDER_MIN_QTY ? SMALL_ORDER_FEE : 0;
+  }
 
   function unitWeightForProduct(productId) {
     const p = getProduct(productId);
@@ -462,12 +471,15 @@
     return getPromotions().find(p => p.code.toUpperCase() === norm) || null;
   }
 
-  function createPromotion({ code, maxUses }) {
+  function createPromotion({ code, maxUses, type, discountAmount }) {
     const promos = getPromotions();
+    const promoType = type === 'amount' ? 'amount' : 'freeship';
     const promo = {
       id: uid('promo'),
       code: String(code).trim(),
       maxUses: Math.max(1, parseInt(maxUses, 10) || 1),
+      type: promoType,
+      discountAmount: promoType === 'amount' ? Math.max(1, Math.round(Number(discountAmount) || 0)) : 0,
       timesApplied: 0,
       timesRedeemed: 0,
       active: true,
@@ -610,6 +622,7 @@
     getConfig, setConfig,
     monthSales, pendingOrderCount, bestSellers, lowStockVariants,
     calcCartWeightGrams, calcShippingFee, isCodAvailable, unitWeightForProduct, UNIT_WEIGHT_EYEWEAR_G, UNIT_WEIGHT_ACCESSORY_G, COD_MAX_KG, COD_FEE,
+    calcSmallOrderFee, SMALL_ORDER_MIN_QTY, SMALL_ORDER_FEE,
     getPromotions, getPromotion, getPromotionByCode, createPromotion, setPromotionActive, deletePromotion, applyPromotion, redeemPromotion,
     getReviews, getStoreRatingSummary, getReviewableOrdersForPhone, submitReview, deleteReview, updateReview,
     uid,
