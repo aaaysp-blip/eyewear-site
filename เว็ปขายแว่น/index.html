@@ -18,13 +18,29 @@
     <div class="topbar-search">
       <input type="text" id="headerSearch" placeholder="ค้นหารหัส/ชื่อ/แบรนด์...">
     </div>
-    <div class="topbar-actions">
-      <button class="btn" id="btnOpenTracking">เช็คสถานะออเดอร์</button>
-      <button class="btn" id="btnOpenReview">เขียนรีวิวร้านค้า</button>
-      <button class="icon-btn" id="btnCart" title="ตะกร้า" aria-label="ตะกร้า">
-        🛒<span class="badge-count hidden" id="cartCount">0</span>
-      </button>
-      <button class="btn" id="btnFilter">☰ ตัวกรอง<span class="filter-dot hidden" id="filterActiveDot"></span></button>
+    <div class="topbar-actions-wrap" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <div class="topbar-actions">
+        <button class="btn" id="btnOpenTracking">เช็คสถานะออเดอร์</button>
+        <button class="btn" id="btnOpenReview">เขียนรีวิวร้านค้า</button>
+        <button class="icon-btn" id="btnCart" title="ตะกร้า" aria-label="ตะกร้า">
+          🛒<span class="badge-count hidden" id="cartCount">0</span>
+        </button>
+        <button class="btn" id="btnFilter">☰ ตัวกรอง<span class="filter-dot hidden" id="filterActiveDot"></span></button>
+      </div>
+      <div class="social-links" style="display:flex;gap:8px">
+        <a href="https://lin.ee/Th0WU0AQ" target="_blank" rel="noopener noreferrer" title="แชทผ่าน LINE" aria-label="แชทผ่าน LINE" style="display:inline-flex;line-height:0">
+          <svg width="26" height="26" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <rect width="24" height="24" rx="6" fill="#06C755"/>
+            <path d="M12 5.7c-3.87 0-7 2.53-7 5.65 0 2.8 2.48 5.14 5.83 5.58.23.05.53.15.61.35.07.18.05.46.02.64l-.1.6c-.03.18-.14.7.61.38.75-.31 4.05-2.39 5.53-4.09 1.02-1.12 1.5-2.26 1.5-3.46 0-3.12-3.13-5.65-7-5.65z" fill="#fff"/>
+          </svg>
+        </a>
+        <a href="https://www.facebook.com/profile.php?id=61580841326756" target="_blank" rel="noopener noreferrer" title="Facebook เพจร้าน" aria-label="Facebook เพจร้าน" style="display:inline-flex;line-height:0">
+          <svg width="26" height="26" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="12" fill="#1877F2"/>
+            <path d="M15.5 12.6h-1.9V19h-2.6v-6.4H9.6v-2.2h1.4V9c0-1.6.8-2.8 2.6-2.8h1.8v2.2h-1.1c-.5 0-.7.3-.7.8v1.2h1.9l-.2 2.2z" fill="#fff"/>
+          </svg>
+        </a>
+      </div>
     </div>
   </div>
 </header>
