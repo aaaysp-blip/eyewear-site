@@ -792,13 +792,11 @@
         return;
       }
 
-      const cfg = DB.getConfig();
-      const payload = PromptPay.generatePayload(cfg.promptpayId, grandTotal);
       body.innerHTML = `
         <div class="qr-box">
-          <div id="qrHolder" style="display:inline-block;background:#fff;padding:16px;border-radius:12px;border:1px solid var(--border)"></div>
+          <img src="assets/promptpay-qr.jpg" alt="QR พร้อมเพย์ร้าน OptiHub" style="max-width:220px;width:100%;border-radius:12px;border:1px solid var(--border);background:#fff;padding:8px">
           <div class="qr-amount">฿${grandTotal.toLocaleString()}</div>
-          <div class="qr-hint">สแกนจ่ายผ่านแอปธนาคารใดก็ได้ (PromptPay) — ยอดนี้รวม${extraFeesNote || 'ค่าจัดส่ง'}แล้ว<br>แอดมินจะตรวจสอบสลิปการโอนของท่านหลังยืนยันคำสั่งซื้อ</div>
+          <div class="qr-hint">สแกน QR ด้วยแอปธนาคารใดก็ได้ (PromptPay) แล้ว<strong>กรอกยอดเงิน ฿${grandTotal.toLocaleString()} ด้วยตัวเอง</strong>ก่อนโอน — ยอดนี้รวม${extraFeesNote || 'ค่าจัดส่ง'}แล้ว<br>แอดมินจะตรวจสอบสลิปการโอนของท่านหลังยืนยันคำสั่งซื้อ</div>
         </div>
         <div class="field" style="max-width:340px;margin:14px auto 0">
           <label>แนบสลิปโอนเงิน<br><span class="tag-muted" style="font-weight:400">(แนะนำ — ช่วยให้แอดมินตรวจสอบไวขึ้น ไม่บังคับ)</span></label>
@@ -810,10 +808,6 @@
           <button class="btn btn-primary btn-block" id="btnGoAddress">ถัดไป: กรอกที่อยู่จัดส่ง</button>
         </div>
       `;
-      new QRCode(document.getElementById('qrHolder'), {
-        text: payload, width: 220, height: 220, colorDark: '#26241f', colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.M,
-      });
       document.getElementById('slipInput').addEventListener('change', e => {
         const file = e.target.files[0];
         if (!file) return;
