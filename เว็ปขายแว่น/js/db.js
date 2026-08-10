@@ -1,38 +1,15 @@
 /*
- * db.js — เชื่อมกับ Supabase จริงผ่าน /api/* (products, orders, customers, config)
+ * db.js — เชื่อมกับ Supabase จริงผ่าน /api/* ทั้งหมด (products, orders, customers,
+ * config, restocks, promotions, reviews)
  * โครงสร้าง: cache ในหน่วยความจำ + async mutation
  *   - ฟังก์ชันอ่าน (getProducts, getOrders, getConfig ฯลฯ) ยังคง synchronous เหมือนเดิมทุกประการ
  *     (อ่านจาก cache ที่โหลดไว้ตอน DB.init() ไม่ใช่ยิง fetch ทุกครั้ง) — เพื่อไม่ต้องแก้โค้ด
  *     render/loop ที่มีอยู่แล้วใน store.js/admin.js
- *   - ฟังก์ชันเขียน (saveProduct, createOrder, setConfig ฯลฯ) เป็น async เรียก API จริง
- *     แล้วอัปเดต cache ให้ตรงกันก่อน resolve
- *   - restocks / promotions / reviews ยังไม่มี API เชื่อม Supabase (นอกขอบเขตรอบนี้)
- *     จึงยังทำงานบน localStorage เหมือนเดิมทั้งหมด ไม่เปลี่ยนแปลง
+ *   - ฟังก์ชันเขียน (saveProduct, createOrder, setConfig, createRestock,
+ *     createPromotion, submitReview ฯลฯ) เป็น async เรียก API จริง แล้วอัปเดต cache
+ *     ให้ตรงกันก่อน resolve
  */
 (function (global) {
-  const KEYS = {
-    restocks: 'ew_restocks',
-    promotions: 'ew_promotions',
-    reviews: 'ew_reviews',
-  };
-
-  function read(key, fallback) {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch (e) {
-      console.error('DB read error', key, e);
-      return fallback;
-    }
-  }
-  function write(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
-  }
-
-  function uid(prefix) {
-    return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  }
-
   // ---------- placeholder image generator (SVG data URI) — ไม่เกี่ยวกับฐานข้อมูล ไม่แตะ ----------
   const COLOR_HEX = {
     'ดำ': '#2b2b2b', 'ดำด้าน': '#26262a', 'น้ำตาล': '#8a5a34', 'น้ำตาลเข้ม': '#5a3a20',
@@ -180,20 +157,60 @@
     };
   }
 
+  function mapRestockItem(it) {
+    return {
+      id: it.id, productId: it.product_id, variantId: it.variant_id,
+      code: it.code, name: it.name, color: it.color,
+      qtyOrdered: it.qty_ordered, currentStock: it.current_stock, qtyReceived: it.qty_received,
+    };
+  }
+  function mapRestock(row) {
+    return {
+      id: row.id, poNo: row.po_no, note: row.note || '', status: row.status,
+      createdAt: row.created_at, receivedAt: row.received_at,
+      items: (row.items || []).map(mapRestockItem),
+    };
+  }
+
+  function mapPromotion(row) {
+    return {
+      id: row.id, code: row.code, maxUses: row.max_uses, type: row.type,
+      discountAmount: Number(row.discount_amount) || 0,
+      timesApplied: row.times_applied, timesRedeemed: row.times_redeemed,
+      active: row.active, createdAt: row.created_at,
+    };
+  }
+
+  function mapReview(row) {
+    return {
+      id: row.id, orderId: row.order_id, phone: row.phone, customerName: row.customer_name,
+      rating: row.rating, comment: row.comment, createdAt: row.created_at, updatedAt: row.updated_at,
+    };
+  }
+
   // ---------- cache ----------
-  const cache = { products: [], orders: [], customers: [], config: { promptpayId: '0000000000', lowStockThreshold: 2, shopPhone: '', shopAddress: '' } };
+  const cache = {
+    products: [], orders: [], customers: [], restocks: [], promotions: [], reviews: [],
+    config: { promptpayId: '0000000000', lowStockThreshold: 2, shopPhone: '', shopAddress: '' },
+  };
 
   async function init() {
-    const [customersRaw, productsRaw, ordersRaw, configRaw] = await Promise.all([
+    const [customersRaw, productsRaw, ordersRaw, configRaw, restocksRaw, promotionsRaw, reviewsRaw] = await Promise.all([
       apiFetch('/api/customers'),
       apiFetch('/api/products'),
       apiFetch('/api/orders'),
       apiFetch('/api/config'),
+      apiFetch('/api/restocks'),
+      apiFetch('/api/promotions'),
+      apiFetch('/api/reviews'),
     ]);
     cache.customers = customersRaw.map(mapCustomer);
     cache.products = productsRaw.map(mapProduct);
     cache.orders = ordersRaw.map(mapOrder); // ต้องมาหลัง customers เพราะ mapOrder join จาก cache.customers
     cache.config = mapConfig(configRaw);
+    cache.restocks = restocksRaw.map(mapRestock);
+    cache.promotions = promotionsRaw.map(mapPromotion);
+    cache.reviews = reviewsRaw.map(mapReview);
   }
 
   function upsertCachedCustomer(customerData) {
@@ -304,7 +321,7 @@
       if (v) v.stock = Math.max(0, v.stock - item.qty);
     });
 
-    if (promoCode) redeemPromotion(promoCode);
+    if (promoCode) await redeemPromotion(promoCode);
     return order;
   }
 
@@ -348,52 +365,42 @@
     }
   }
 
-  // ---------- Restocks (ใบสั่งซื้อเข้าสต็อก) — ยังไม่มี API เชื่อม Supabase คงไว้บน localStorage ----------
+  // ---------- Restocks (ใบสั่งซื้อเข้าสต็อก) ----------
   // สถานะ: 1 = รอของเข้า (รอตรวจรับ), 2 = ตรวจรับเข้าสต็อกแล้ว
-  function getRestocks() { return read(KEYS.restocks, []); }
-  function getRestock(id) { return getRestocks().find((r) => r.id === id) || null; }
+  function getRestocks() { return cache.restocks; }
+  function getRestock(id) { return cache.restocks.find((r) => r.id === id) || null; }
 
-  function createRestock({ items, note }) {
-    const restocks = getRestocks();
-    const poNo = 'PO' + Date.now().toString().slice(-8) + String(restocks.length + 1).padStart(3, '0');
-    const restock = {
-      id: uid('r'),
-      poNo,
-      note: note || '',
-      items: items.map((it) => ({ ...it, qtyReceived: it.qtyOrdered })),
-      status: 1,
-      createdAt: new Date().toISOString(),
-      receivedAt: null,
-    };
-    restocks.unshift(restock);
-    write(KEYS.restocks, restocks);
+  async function createRestock({ items, note }) {
+    const resp = await apiFetch('/api/restocks', { method: 'POST', body: JSON.stringify({ items, note }) });
+    const restock = mapRestock(resp);
+    cache.restocks.unshift(restock);
     return restock;
   }
 
-  function updateRestockReceivedQty(restockId, itemIndex, qty) {
-    const restocks = getRestocks();
-    const r = restocks.find((x) => x.id === restockId);
+  async function updateRestockReceivedQty(restockId, itemIndex, qty) {
+    const r = cache.restocks.find((x) => x.id === restockId);
     if (!r || r.status !== 1) return;
-    if (!r.items[itemIndex]) return;
-    r.items[itemIndex].qtyReceived = Math.max(0, parseInt(qty, 10) || 0);
-    write(KEYS.restocks, restocks);
+    const item = r.items[itemIndex];
+    if (!item) return;
+    const qtyReceived = Math.max(0, parseInt(qty, 10) || 0);
+    await apiFetch('/api/restocks', { method: 'PATCH', body: JSON.stringify({ id: restockId, itemId: item.id, qtyReceived }) });
+    item.qtyReceived = qtyReceived;
   }
 
   async function confirmRestockReceive(restockId) {
-    const restocks = getRestocks();
-    const r = restocks.find((x) => x.id === restockId);
+    const r = cache.restocks.find((x) => x.id === restockId);
     if (!r || r.status !== 1) return;
     for (const it of r.items) {
       const p = cache.products.find((x) => x.id === it.productId);
       const v = p && p.variants.find((x) => x.id === it.variantId);
       if (v) await updateVariantStock(it.productId, it.variantId, v.stock + (Number(it.qtyReceived) || 0));
     }
+    await apiFetch('/api/restocks', { method: 'PATCH', body: JSON.stringify({ id: restockId, confirmReceive: true }) });
     r.status = 2;
     r.receivedAt = new Date().toISOString();
-    write(KEYS.restocks, restocks);
   }
 
-  function pendingRestockCount() { return getRestocks().filter((r) => r.status === 1).length; }
+  function pendingRestockCount() { return cache.restocks.filter((r) => r.status === 1).length; }
 
   // ---------- Customers ----------
   function getCustomers() { return cache.customers; }
@@ -499,110 +506,84 @@
     return out;
   }
 
-  // ---------- Promotions (คูปองส่งฟรี) — ยังไม่มี API เชื่อม Supabase คงไว้บน localStorage ----------
-  function getPromotions() { return read(KEYS.promotions, []); }
-  function getPromotion(id) { return getPromotions().find((p) => p.id === id) || null; }
+  // ---------- Promotions (คูปองส่งฟรี) ----------
+  function getPromotions() { return cache.promotions; }
+  function getPromotion(id) { return cache.promotions.find((p) => p.id === id) || null; }
   function getPromotionByCode(code) {
     const norm = String(code || '').trim().toUpperCase();
-    return getPromotions().find((p) => p.code.toUpperCase() === norm) || null;
+    return cache.promotions.find((p) => p.code.toUpperCase() === norm) || null;
   }
 
-  function createPromotion({ code, maxUses, type, discountAmount }) {
-    const promos = getPromotions();
-    const promoType = type === 'amount' ? 'amount' : 'freeship';
-    const promo = {
-      id: uid('promo'),
-      code: String(code).trim(),
-      maxUses: Math.max(1, parseInt(maxUses, 10) || 1),
-      type: promoType,
-      discountAmount: promoType === 'amount' ? Math.max(1, Math.round(Number(discountAmount) || 0)) : 0,
-      timesApplied: 0,
-      timesRedeemed: 0,
-      active: true,
-      createdAt: new Date().toISOString(),
-    };
-    promos.unshift(promo);
-    write(KEYS.promotions, promos);
+  function upsertCachedPromotion(mapped) {
+    const idx = cache.promotions.findIndex((p) => p.id === mapped.id);
+    if (idx >= 0) cache.promotions[idx] = mapped; else cache.promotions.unshift(mapped);
+  }
+
+  async function createPromotion({ code, maxUses, type, discountAmount }) {
+    const resp = await apiFetch('/api/promotions', { method: 'POST', body: JSON.stringify({ code, maxUses, type, discountAmount }) });
+    const promo = mapPromotion(resp);
+    cache.promotions.unshift(promo);
     return promo;
   }
 
-  function setPromotionActive(id, active) {
-    const promos = getPromotions();
-    const p = promos.find((x) => x.id === id);
-    if (!p) return;
-    p.active = !!active;
-    write(KEYS.promotions, promos);
+  async function setPromotionActive(id, active) {
+    await apiFetch('/api/promotions', { method: 'PATCH', body: JSON.stringify({ id, active: !!active }) });
+    const p = cache.promotions.find((x) => x.id === id);
+    if (p) p.active = !!active;
   }
 
-  function deletePromotion(id) {
-    write(KEYS.promotions, getPromotions().filter((p) => p.id !== id));
+  async function deletePromotion(id) {
+    await apiFetch('/api/promotions?id=' + encodeURIComponent(id), { method: 'DELETE' });
+    cache.promotions = cache.promotions.filter((p) => p.id !== id);
   }
 
-  function applyPromotion(code) {
-    const promo = getPromotionByCode(code);
-    if (!promo) return { ok: false, reason: 'notfound' };
-    if (!promo.active) return { ok: false, reason: 'inactive' };
-    if (promo.timesRedeemed >= promo.maxUses) return { ok: false, reason: 'exhausted' };
-    const promos = getPromotions();
-    const p = promos.find((x) => x.id === promo.id);
-    p.timesApplied += 1;
-    write(KEYS.promotions, promos);
-    return { ok: true, promotion: p };
+  async function applyPromotion(code) {
+    const resp = await apiFetch('/api/promotions', { method: 'PATCH', body: JSON.stringify({ code, action: 'apply' }) });
+    if (resp.ok && resp.promotion) {
+      const mapped = mapPromotion(resp.promotion);
+      upsertCachedPromotion(mapped);
+      return { ok: true, promotion: mapped };
+    }
+    return resp;
   }
 
-  function redeemPromotion(code) {
-    const promo = getPromotionByCode(code);
-    if (!promo) return;
-    const promos = getPromotions();
-    const p = promos.find((x) => x.id === promo.id);
-    if (!p) return;
-    p.timesRedeemed += 1;
-    write(KEYS.promotions, promos);
+  async function redeemPromotion(code) {
+    const resp = await apiFetch('/api/promotions', { method: 'PATCH', body: JSON.stringify({ code, action: 'redeem' }) });
+    if (resp.ok && resp.promotion) upsertCachedPromotion(mapPromotion(resp.promotion));
   }
 
-  // ---------- Reviews — ยังไม่มี API เชื่อม Supabase คงไว้บน localStorage ----------
-  function getReviews() { return read(KEYS.reviews, []); }
+  // ---------- Reviews ----------
+  function getReviews() { return cache.reviews; }
 
   function getStoreRatingSummary() {
-    const reviews = getReviews();
+    const reviews = cache.reviews;
     if (!reviews.length) return { count: 0, average: 0 };
     const sum = reviews.reduce((s, r) => s + r.rating, 0);
     return { count: reviews.length, average: Math.round((sum / reviews.length) * 10) / 10 };
   }
 
   function getReviewableOrdersForPhone(phone) {
-    const reviews = getReviews();
-    return cache.orders.filter((o) => o.customer.phone === phone && o.status === 4 && !reviews.some((r) => r.orderId === o.id));
+    return cache.orders.filter((o) => o.customer.phone === phone && o.status === 4 && !cache.reviews.some((r) => r.orderId === o.id));
   }
 
-  function submitReview({ orderId, phone, customerName, rating, comment }) {
-    const reviews = getReviews();
-    const review = {
-      id: uid('rev'),
-      orderId, phone,
-      customerName: customerName || 'ลูกค้า',
-      rating: Math.max(1, Math.min(5, Math.round(Number(rating) || 5))),
-      comment: (comment || '').trim(),
-      createdAt: new Date().toISOString(),
-    };
-    reviews.unshift(review);
-    write(KEYS.reviews, reviews);
+  async function submitReview({ orderId, phone, customerName, rating, comment }) {
+    const resp = await apiFetch('/api/reviews', { method: 'POST', body: JSON.stringify({ orderId, phone, customerName, rating, comment }) });
+    const review = mapReview(resp);
+    cache.reviews.unshift(review);
     return review;
   }
 
-  function deleteReview(id) {
-    write(KEYS.reviews, getReviews().filter((r) => r.id !== id));
+  async function deleteReview(id) {
+    await apiFetch('/api/reviews?id=' + encodeURIComponent(id), { method: 'DELETE' });
+    cache.reviews = cache.reviews.filter((r) => r.id !== id);
   }
 
-  function updateReview(id, { rating, comment }) {
-    const reviews = getReviews();
-    const r = reviews.find((x) => x.id === id);
-    if (!r) return null;
-    if (rating != null) r.rating = Math.max(1, Math.min(5, Math.round(Number(rating) || r.rating)));
-    if (comment != null) r.comment = String(comment).trim();
-    r.updatedAt = new Date().toISOString();
-    write(KEYS.reviews, reviews);
-    return r;
+  async function updateReview(id, { rating, comment }) {
+    const resp = await apiFetch('/api/reviews', { method: 'PATCH', body: JSON.stringify({ id, rating, comment }) });
+    const review = mapReview(resp);
+    const idx = cache.reviews.findIndex((r) => r.id === id);
+    if (idx >= 0) cache.reviews[idx] = review;
+    return review;
   }
 
   global.DB = {
@@ -619,6 +600,5 @@
     calcSmallOrderFee, SMALL_ORDER_MIN_QTY, SMALL_ORDER_FEE,
     getPromotions, getPromotion, getPromotionByCode, createPromotion, setPromotionActive, deletePromotion, applyPromotion, redeemPromotion,
     getReviews, getStoreRatingSummary, getReviewableOrdersForPhone, submitReview, deleteReview, updateReview,
-    uid,
   };
 })(window);

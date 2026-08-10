@@ -1034,10 +1034,10 @@
     document.getElementById('restockReviewModal').classList.add('show');
   }
 
-  function confirmCreateRestockFromReview() {
+  async function confirmCreateRestockFromReview() {
     if (!restockReviewItems.length) return;
     const note = document.getElementById('restockReviewNote').value.trim();
-    DB.createRestock({ items: restockReviewItems, note });
+    await DB.createRestock({ items: restockReviewItems, note });
     restockDraft = [];
     restockReviewItems = [];
     document.getElementById('restockReviewNote').value = '';
@@ -1113,9 +1113,9 @@
       el.addEventListener('click', () => document.getElementById('po-body-' + el.dataset.togglePo).classList.toggle('show'));
     });
     wrap.querySelectorAll('.po-recv-input').forEach(inp => {
-      inp.addEventListener('change', e => {
+      inp.addEventListener('change', async e => {
         e.stopPropagation();
-        DB.updateRestockReceivedQty(inp.dataset.rid, Number(inp.dataset.idx), inp.value);
+        await DB.updateRestockReceivedQty(inp.dataset.rid, Number(inp.dataset.idx), inp.value);
       });
       inp.addEventListener('click', e => e.stopPropagation());
     });
@@ -1489,19 +1489,19 @@
       });
     });
     wrap.querySelectorAll('[data-save-review]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const id = btn.dataset.saveReview;
         const rating = document.getElementById('review-rating-' + id).value;
         const comment = document.getElementById('review-comment-' + id).value;
-        DB.updateReview(id, { rating, comment });
+        await DB.updateReview(id, { rating, comment });
         showToast('บันทึกการแก้ไขรีวิวแล้ว');
         renderReviews();
       });
     });
     wrap.querySelectorAll('[data-delete-review]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         if (!confirm('ลบรีวิวนี้แน่ใจไหม? กู้คืนไม่ได้')) return;
-        DB.deleteReview(btn.dataset.deleteReview);
+        await DB.deleteReview(btn.dataset.deleteReview);
         showToast('ลบรีวิวแล้ว');
         renderReviews();
       });
@@ -1535,15 +1535,15 @@
     `;
     }).join('');
     wrap.querySelectorAll('[data-toggle-promo]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        DB.setPromotionActive(btn.dataset.togglePromo, btn.dataset.active === '1');
+      btn.addEventListener('click', async () => {
+        await DB.setPromotionActive(btn.dataset.togglePromo, btn.dataset.active === '1');
         renderPromotions();
       });
     });
     wrap.querySelectorAll('[data-delete-promo]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         if (!confirm('ลบโค้ดนี้แน่ใจไหม? กู้คืนไม่ได้')) return;
-        DB.deletePromotion(btn.dataset.deletePromo);
+        await DB.deletePromotion(btn.dataset.deletePromo);
         renderPromotions();
       });
     });
@@ -1553,7 +1553,7 @@
     document.getElementById('promoType').addEventListener('change', e => {
       document.getElementById('promoAmountField').style.display = e.target.value === 'amount' ? 'block' : 'none';
     });
-    document.getElementById('btnCreatePromo').addEventListener('click', () => {
+    document.getElementById('btnCreatePromo').addEventListener('click', async () => {
       const codeEl = document.getElementById('promoCode');
       const maxUsesEl = document.getElementById('promoMaxUses');
       const typeEl = document.getElementById('promoType');
@@ -1568,7 +1568,7 @@
       if (!maxUses || maxUses < 1) { err.textContent = 'กรุณากรอกจำนวนสิทธิ์ให้ถูกต้อง'; return; }
       if (type === 'amount' && (!discountAmount || discountAmount < 1)) { err.textContent = 'กรุณากรอกจำนวนเงินส่วนลดให้ถูกต้อง'; return; }
       err.textContent = '';
-      DB.createPromotion({ code, maxUses, type, discountAmount });
+      await DB.createPromotion({ code, maxUses, type, discountAmount });
       codeEl.value = '';
       maxUsesEl.value = 50;
       typeEl.value = 'freeship';

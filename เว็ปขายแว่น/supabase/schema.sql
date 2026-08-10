@@ -118,6 +118,59 @@ insert into store_config (id, promptpay_id, low_stock_threshold, admin_password)
 values (1, '0000000000', 2, 'admin1234')
 on conflict (id) do nothing;
 
+-- ---------- restocks / restock_items (ใบสั่งซื้อเข้าสต็อก) ----------
+-- ตารางนี้มีอยู่ในโปรเจกต์อยู่แล้วก่อนหน้านี้ (สร้างจากที่อื่น) — ใช้ if not exists เพื่อไม่ชนกัน
+-- แล้วเติมคอลัมน์ snapshot (code/name/color/current_stock) ที่ยังไม่มีให้ครบ
+create table if not exists restocks (
+  id uuid primary key default gen_random_uuid(),
+  po_no text unique not null,
+  note text,
+  status integer not null default 1,
+  created_at timestamptz not null default now(),
+  received_at timestamptz
+);
+
+create table if not exists restock_items (
+  id uuid primary key default gen_random_uuid(),
+  restock_id uuid not null references restocks(id) on delete cascade,
+  product_id uuid,
+  variant_id uuid,
+  qty_ordered integer not null default 0,
+  qty_received integer not null default 0
+);
+
+alter table restock_items add column if not exists code text;
+alter table restock_items add column if not exists name text;
+alter table restock_items add column if not exists color text;
+alter table restock_items add column if not exists current_stock integer;
+
+create index if not exists idx_restock_items_restock_id on restock_items(restock_id);
+
+-- ---------- promotions (คูปองส่งฟรี/ส่วนลด) ----------
+create table if not exists promotions (
+  id uuid primary key default gen_random_uuid(),
+  code text unique not null,
+  max_uses integer not null default 1,
+  type text not null default 'freeship',
+  discount_amount numeric not null default 0,
+  times_applied integer not null default 0,
+  times_redeemed integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+-- ---------- reviews (รีวิวร้านค้า) ----------
+create table if not exists reviews (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid references orders(id) on delete cascade,
+  phone text,
+  customer_name text,
+  rating integer not null,
+  comment text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+
 -- ---------- Row Level Security ----------
 -- ปิดการเข้าถึงจาก anon/authenticated key ทั้งหมด (ไม่มี policy = ปฏิเสธหมด)
 -- api/*.js ใช้ SUPABASE_SERVICE_ROLE_KEY ซึ่ง bypass RLS อยู่แล้ว จึงยังทำงานได้ปกติ
@@ -127,6 +180,10 @@ alter table customers enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
 alter table store_config enable row level security;
+alter table restocks enable row level security;
+alter table restock_items enable row level security;
+alter table promotions enable row level security;
+alter table reviews enable row level security;
 
 -- service_role ต้องมี grant ตรงๆ ด้วย (RLS bypass ไม่ได้แทนที่ grant พื้นฐานของ Postgres)
 grant usage on schema public to service_role;

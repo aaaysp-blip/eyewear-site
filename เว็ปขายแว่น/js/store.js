@@ -474,7 +474,7 @@
     });
 
     listWrap.querySelectorAll('[data-submit-review]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const idx = Number(btn.dataset.submitReview);
         const order = orders[idx];
         const card = listWrap.querySelector(`.reviewable-card[data-idx="${idx}"]`);
@@ -482,7 +482,7 @@
         const rating = ratings[idx];
         if (!rating) { errEl.textContent = 'กรุณาเลือกจำนวนดาว'; return; }
         const comment = card.querySelector('textarea').value.trim();
-        DB.submitReview({
+        await DB.submitReview({
           orderId: order.id,
           phone,
           customerName: order.customer.name || 'ลูกค้า',
@@ -737,11 +737,11 @@
         }
       });
       const applyPromoBtn = document.getElementById('btnApplyPromo');
-      if (applyPromoBtn) applyPromoBtn.addEventListener('click', () => {
+      if (applyPromoBtn) applyPromoBtn.addEventListener('click', async () => {
         const code = document.getElementById('promoInput').value.trim();
         const msg = document.getElementById('promoMsg');
         if (!code) { msg.textContent = 'กรุณากรอกโค้ด'; return; }
-        const result = DB.applyPromotion(code);
+        const result = await DB.applyPromotion(code);
         if (!result.ok) {
           msg.textContent = result.reason === 'notfound' ? 'ไม่พบโค้ดนี้'
             : result.reason === 'exhausted' ? 'โค้ดนี้ถูกใช้ครบจำนวนแล้ว'
