@@ -1,7 +1,5 @@
 /* store.js — หน้าร้าน: แท็บ/ตัวกรอง/แบ่งหน้า/popup สินค้า/ตะกร้า/checkout */
 (function () {
-  DB.seedIfEmpty();
-
   const PAGE_SIZE = 20;
   const CART_KEY = 'ew_cart';
 
@@ -877,7 +875,7 @@
     }
   }
 
-  function submitOrder() {
+  async function submitOrder() {
     const name = document.getElementById('adName').value.trim();
     const phone = document.getElementById('adPhone').value.trim();
     const lineId = document.getElementById('adLine').value.trim();
@@ -910,7 +908,7 @@
     const discountAmount = currentPromoDiscount();
     const codFee = currentCodFee();
     const total = Math.max(0, subtotal + shippingFee + smallOrderFee + codFee - discountAmount);
-    lastOrder = DB.createOrder({
+    lastOrder = await DB.createOrder({
       items: cart,
       subtotal,
       shippingFee,
@@ -933,8 +931,14 @@
   }
 
   // ---------------- init ----------------
-  renderCartCount();
-  updateFilterBadge();
-  renderStoreRating();
-  renderGrid();
+  DB.init().then(() => {
+    renderCartCount();
+    updateFilterBadge();
+    renderStoreRating();
+    renderGrid();
+  }).catch((err) => {
+    console.error('DB.init failed', err);
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div style="background:#fee2e2;color:#991b1b;padding:12px;text-align:center;font-size:14px">โหลดข้อมูลจากเซิร์ฟเวอร์ไม่สำเร็จ: ' + (err.message || err) + '</div>');
+  });
 })();

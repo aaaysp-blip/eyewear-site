@@ -1,6 +1,7 @@
 // api/products.js
 // GET    /api/products             -> รายการสินค้าทั้งหมด (พร้อม variants)
 // POST   /api/products             -> เพิ่ม/แก้ไขสินค้า (ส่ง id มาด้วย = แก้ไข, ไม่ส่ง = เพิ่มใหม่)
+// PATCH  /api/products             -> แก้สต็อกของตัวเลือกสีเดียวแบบเร็ว { variantId, stock }
 // DELETE /api/products?id=xxx      -> ลบสินค้า
 
 import { getSupabase } from './_lib/supabase.js';
@@ -90,6 +91,21 @@ export default async function handler(req, res) {
       }
 
       res.status(200).json({ id: productId });
+      return;
+    }
+
+    if (req.method === 'PATCH') {
+      const { variantId, stock } = req.body || {};
+      if (!variantId || stock == null) {
+        res.status(400).json({ error: 'variantId and stock are required' });
+        return;
+      }
+      const { error } = await supabase
+        .from('product_variants')
+        .update({ stock: Math.max(0, parseInt(stock, 10) || 0) })
+        .eq('id', variantId);
+      if (error) throw error;
+      res.status(200).json({ ok: true });
       return;
     }
 

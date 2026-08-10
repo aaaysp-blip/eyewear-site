@@ -1,7 +1,5 @@
 /* admin.js — หลังบ้าน: dashboard, ลงสินค้า+AI แยกสี, จัดการสต็อก, ออเดอร์, CRM, ตั้งค่า */
 (function () {
-  DB.seedIfEmpty();
-
   let restockDraft = []; // { productId, variantId, code, name, color, qtyOrdered, currentStock } — ประกาศไว้บนสุดเพราะ renderDashboard อาจถูกเรียกทันทีตอนโหลดหน้า (ล็อกอินค้างจาก session ก่อน)
   let appInited = false; // ประกาศไว้บนสุดด้วยเหตุผลเดียวกัน (initApp ถูกเรียกทันทีถ้ายังล็อกอินค้างจาก session ก่อนหน้า เช่นตอนรีเฟรชหน้า)
 
@@ -38,15 +36,19 @@
 
   document.getElementById('btnLogin').addEventListener('click', doLogin);
   document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-  function doLogin() {
+  async function doLogin() {
     const pw = document.getElementById('loginPassword').value;
-    const cfg = DB.getConfig();
-    if (pw === cfg.adminPassword) {
-      sessionStorage.setItem(SESSION_KEY, '1');
-      document.getElementById('loginError').textContent = '';
-      showApp();
-    } else {
-      document.getElementById('loginError').textContent = 'รหัสผ่านไม่ถูกต้อง';
+    try {
+      const ok = await DB.verifyAdminPassword(pw);
+      if (ok) {
+        sessionStorage.setItem(SESSION_KEY, '1');
+        document.getElementById('loginError').textContent = '';
+        showApp();
+      } else {
+        document.getElementById('loginError').textContent = 'รหัสผ่านไม่ถูกต้อง';
+      }
+    } catch (err) {
+      document.getElementById('loginError').textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: ' + (err.message || err);
     }
   }
   document.getElementById('btnLogout').addEventListener('click', () => {
@@ -57,11 +59,18 @@
   if (isLoggedIn()) showApp(); else showLogin();
 
   // ================= App init (nav) =================
-  function initApp() {
+  async function initApp() {
     document.querySelectorAll('.nav-link[data-view]').forEach(link => {
       link.addEventListener('click', () => switchView(link.dataset.view));
     });
     if (!appInited) {
+      try {
+        await DB.init();
+      } catch (err) {
+        console.error('DB.init failed', err);
+        alert('โหลดข้อมูลจากเซิร์ฟเวอร์ไม่สำเร็จ: ' + (err.message || err));
+        return;
+      }
       appInited = true;
       setupNewProductForm();
       setupSettings();
@@ -586,7 +595,7 @@
     });
   }
 
-  function saveNewProduct() {
+  async function saveNewProduct() {
     const err = document.getElementById('npError');
     const name = document.getElementById('npName').value.trim();
     const brand = document.getElementById('npBrand').value.trim();
@@ -633,13 +642,17 @@
       code, name, brand, category, price, ...sizeData,
       images: pendingMainImages.map(m => m.cropped),
       imagesOriginal: pendingMainImages.map(m => m.original),
-      variants: pendingVariants.map(v => ({ id: v.existingId || DB.uid('v'), color: v.color.trim() || 'สีมาตรฐาน', stock: v.stock, images: v.images })),
+      variants: pendingVariants.map(v => {
+        const row = { color: v.color.trim() || 'สีมาตรฐาน', stock: v.stock, images: v.images };
+        if (v.existingId) row.id = v.existingId; // ไม่ส่ง id สำหรับสีใหม่ ให้เซิร์ฟเวอร์สร้าง uuid ให้เอง
+        return row;
+      }),
     };
     if (editingProductId) {
       product.id = editingProductId;
       product.createdAt = editingCreatedAt;
     }
-    DB.saveProduct(product);
+    await DB.saveProduct(product);
     showToast(editingProductId ? `บันทึกการแก้ไข ${code} เรียบร้อย` : `บันทึกสินค้า ${code} เรียบร้อย`);
     resetProductForm();
   }
@@ -859,8 +872,8 @@
     });
     document.getElementById('btnStockEdit').addEventListener('click', () => editProduct(p.id));
     document.querySelectorAll('.stock-input').forEach(inp => {
-      inp.addEventListener('change', () => {
-        DB.updateVariantStock(inp.dataset.pid, inp.dataset.vid, inp.value);
+      inp.addEventListener('change', async () => {
+        await DB.updateVariantStock(inp.dataset.pid, inp.dataset.vid, inp.value);
         renderStockDetail(productId);
         showToast('อัปเดตสต็อกแล้ว');
       });
@@ -1107,9 +1120,9 @@
       inp.addEventListener('click', e => e.stopPropagation());
     });
     wrap.querySelectorAll('[data-confirm-po]').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', async e => {
         e.stopPropagation();
-        DB.confirmRestockReceive(btn.dataset.confirmPo);
+        await DB.confirmRestockReceive(btn.dataset.confirmPo);
         showToast('ตรวจรับเข้าสต็อกเรียบร้อย');
         renderRestockView();
       });
@@ -1330,28 +1343,28 @@
       });
     });
     wrap.querySelectorAll('[data-advance]').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', async e => {
         e.stopPropagation();
         const o = DB.getOrder(btn.dataset.advance);
-        DB.updateOrderStatus(o.id, DB.nextStatus(o.status));
+        await DB.updateOrderStatus(o.id, DB.nextStatus(o.status));
         renderOrders();
         showToast('อัปเดตสถานะออเดอร์แล้ว');
       });
     });
     wrap.querySelectorAll('[data-print-label]').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', async e => {
         e.stopPropagation();
         const o = DB.getOrder(btn.dataset.printLabel);
         printShippingLabel(o);
         if (o.status === 2) {
-          DB.updateOrderStatus(o.id, 3);
+          await DB.updateOrderStatus(o.id, 3);
           renderOrders();
           showToast('พิมพ์ใบปะหน้าแล้ว — มาร์คว่าแพ็คสินค้าเรียบร้อย');
         }
       });
     });
     wrap.querySelectorAll('[data-confirm-ship]').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', async e => {
         e.stopPropagation();
         const oid = btn.dataset.confirmShip;
         const courierSel = document.getElementById(`courier-${oid}`);
@@ -1361,7 +1374,7 @@
         const trackingNo = input.value.trim();
         if (!courier) { err.textContent = 'กรุณาเลือกขนส่งก่อนยืนยันจัดส่ง'; return; }
         if (!trackingNo) { err.textContent = 'กรุณากรอกเลข Tracking ก่อนยืนยันจัดส่ง'; return; }
-        DB.setTrackingAndShip(oid, trackingNo, courier);
+        await DB.setTrackingAndShip(oid, trackingNo, courier);
         renderOrders();
         showToast('บันทึกเลข Tracking และยืนยันจัดส่งแล้ว');
       });
@@ -1374,18 +1387,18 @@
       });
     });
     wrap.querySelectorAll('[data-cod-delivered]').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', async e => {
         e.stopPropagation();
-        DB.markCodDelivered(btn.dataset.codDelivered);
+        await DB.markCodDelivered(btn.dataset.codDelivered);
         renderOrders();
         showToast('บันทึกผลส่งสำเร็จแล้ว');
       });
     });
     wrap.querySelectorAll('[data-cod-returned]').forEach(btn => {
-      btn.addEventListener('click', e => {
+      btn.addEventListener('click', async e => {
         e.stopPropagation();
         if (!confirm('ยืนยันว่าออเดอร์นี้ตีกลับจริง? ระบบจะคืนสต็อกสินค้าทั้งหมดในออเดอร์นี้ให้อัตโนมัติ')) return;
-        DB.markCodReturned(btn.dataset.codReturned);
+        await DB.markCodReturned(btn.dataset.codReturned);
         renderOrders();
         showToast('บันทึกผลตีกลับและคืนสต็อกแล้ว');
       });
@@ -1568,7 +1581,7 @@
 
   // ================= Settings =================
   function setupSettings() {
-    document.getElementById('btnSaveSettings').addEventListener('click', () => {
+    document.getElementById('btnSaveSettings').addEventListener('click', async () => {
       const promptpayId = document.getElementById('stPromptpay').value.trim();
       const lowStockThreshold = Math.max(0, parseInt(document.getElementById('stThreshold').value, 10) || 0);
       const shopPhone = document.getElementById('stShopPhone').value.trim();
@@ -1576,7 +1589,7 @@
       const newPassword = document.getElementById('stPassword').value.trim();
       const patch = { promptpayId, lowStockThreshold, shopPhone, shopAddress };
       if (newPassword) patch.adminPassword = newPassword;
-      DB.setConfig(patch);
+      await DB.setConfig(patch);
       document.getElementById('stPassword').value = '';
       document.getElementById('settingsMsg').style.color = 'var(--success)';
       document.getElementById('settingsMsg').textContent = 'บันทึกการตั้งค่าเรียบร้อย';

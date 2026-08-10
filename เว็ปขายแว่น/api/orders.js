@@ -29,7 +29,11 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { items = [], total, customer } = req.body || {};
+      const {
+        items = [], total, customer,
+        subtotal, shippingFee, smallOrderFee, codFee, discountAmount,
+        paymentMethod, promoCode, paymentSlip,
+      } = req.body || {};
       if (!items.length || !customer?.phone) {
         res.status(400).json({ error: 'items and customer.phone are required' });
         return;
@@ -56,6 +60,14 @@ export default async function handler(req, res) {
           total,
           customer_phone: customer.phone,
           status: 1,
+          subtotal: subtotal != null ? subtotal : total,
+          shipping_fee: shippingFee || 0,
+          small_order_fee: smallOrderFee || 0,
+          cod_fee: codFee || 0,
+          discount_amount: discountAmount || 0,
+          payment_method: paymentMethod || 'promptpay',
+          promo_code: promoCode || null,
+          payment_slip: paymentSlip || null,
         })
         .select()
         .single();
@@ -93,7 +105,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PATCH') {
-      const { id, status, trackingNo, courier } = req.body || {};
+      const { id, status, trackingNo, courier, codDeliveryStatus } = req.body || {};
       if (!id) {
         res.status(400).json({ error: 'id is required' });
         return;
@@ -102,6 +114,7 @@ export default async function handler(req, res) {
       if (status != null) patch.status = status;
       if (trackingNo != null) patch.tracking_no = trackingNo;
       if (courier != null) patch.courier = courier;
+      if (codDeliveryStatus != null) patch.cod_delivery_status = codDeliveryStatus;
 
       const { error } = await supabase.from('orders').update(patch).eq('id', id);
       if (error) throw error;

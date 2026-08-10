@@ -1,20 +1,17 @@
 /*
- * db.js — mock database layer (localStorage)
- * ออกแบบ schema ให้ใกล้เคียงตารางจริง เพื่อให้ย้ายไป Supabase/Postgres ในอนาคตได้ง่าย:
- *   products(id, code, name, brand, category, price, frame_width, lens_width, lens_height, created_at)
- *   product_variants(id, product_id, color, stock, images[])
- *   orders(id, order_no, status, total, customer_phone, created_at, updated_at)
- *   order_items(order_id, product_id, variant_id, code, name, color, qty, price, image)
- *   customers(phone, name, line_id, address, subdistrict, district, province, zipcode, created_at)
+ * db.js — เชื่อมกับ Supabase จริงผ่าน /api/* (products, orders, customers, config)
+ * โครงสร้าง: cache ในหน่วยความจำ + async mutation
+ *   - ฟังก์ชันอ่าน (getProducts, getOrders, getConfig ฯลฯ) ยังคง synchronous เหมือนเดิมทุกประการ
+ *     (อ่านจาก cache ที่โหลดไว้ตอน DB.init() ไม่ใช่ยิง fetch ทุกครั้ง) — เพื่อไม่ต้องแก้โค้ด
+ *     render/loop ที่มีอยู่แล้วใน store.js/admin.js
+ *   - ฟังก์ชันเขียน (saveProduct, createOrder, setConfig ฯลฯ) เป็น async เรียก API จริง
+ *     แล้วอัปเดต cache ให้ตรงกันก่อน resolve
+ *   - restocks / promotions / reviews ยังไม่มี API เชื่อม Supabase (นอกขอบเขตรอบนี้)
+ *     จึงยังทำงานบน localStorage เหมือนเดิมทั้งหมด ไม่เปลี่ยนแปลง
  */
 (function (global) {
   const KEYS = {
-    products: 'ew_products',
-    orders: 'ew_orders',
-    customers: 'ew_customers',
     restocks: 'ew_restocks',
-    seq: 'ew_seq',
-    config: 'ew_config',
     promotions: 'ew_promotions',
     reviews: 'ew_reviews',
   };
@@ -36,14 +33,7 @@
     return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
-  function nextSeq(name) {
-    const seq = read(KEYS.seq, {});
-    seq[name] = (seq[name] || 0) + 1;
-    write(KEYS.seq, seq);
-    return seq[name];
-  }
-
-  // ---------- placeholder image generator (SVG data URI) ----------
+  // ---------- placeholder image generator (SVG data URI) — ไม่เกี่ยวกับฐานข้อมูล ไม่แตะ ----------
   const COLOR_HEX = {
     'ดำ': '#2b2b2b', 'ดำด้าน': '#26262a', 'น้ำตาล': '#8a5a34', 'น้ำตาลเข้ม': '#5a3a20',
     'ทอง': '#c9a24b', 'เงิน': '#b9bfc4', 'กุหลาบทอง': '#caa593', 'ใส': '#dfe6e6',
@@ -72,134 +62,185 @@
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   }
 
-  // ---------- seed ----------
-  function daysAgoISO(n) {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return d.toISOString();
+  function isNew(product) {
+    const created = new Date(product.createdAt).getTime();
+    const diffDays = (Date.now() - created) / 86400000;
+    return diffDays <= 3;
   }
 
-  function seedIfEmpty() {
-    const existing = read(KEYS.products, null);
-    if (existing && existing.length) return;
+  // ---------- API helper ----------
+  async function apiFetch(url, options) {
+    const opts = Object.assign({ headers: { 'Content-Type': 'application/json' } }, options);
+    const res = await fetch(url, opts);
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* ไม่มี body หรือไม่ใช่ JSON (เช่นรูปภาพ) */ }
+    if (!res.ok) throw new Error((data && data.error) || `${res.status} ${res.statusText}`);
+    return data;
+  }
 
-    const seedDefs = [
-      { name: 'Aviator Classic', brand: 'RayVue', category: 'sunglasses', price: 1290, fw: 140, lw: 58, lh: 52, age: 1,
-        colors: ['ทอง', 'เงิน', 'ดำ'] },
-      { name: 'Round Retro', brand: 'RayVue', category: 'sunglasses', price: 990, fw: 138, lw: 50, lh: 48, age: 5,
-        colors: ['น้ำตาลเข้ม', 'ดำ'] },
-      { name: 'Sport Wrap', brand: 'ZoomOptic', category: 'sunglasses', price: 1590, fw: 145, lw: 60, lh: 45, age: 8,
-        colors: ['ดำด้าน', 'เขียวมะกอก'] },
-      { name: 'Cat Eye Chic', brand: 'Luna', category: 'sunglasses', price: 1190, fw: 136, lw: 54, lh: 50, age: 2,
-        colors: ['กุหลาบทอง', 'ดำ', 'เบจ'] },
-      { name: 'Polarized Pro', brand: 'ZoomOptic', category: 'sunglasses', price: 1890, fw: 142, lw: 58, lh: 50, age: 20,
-        colors: ['ดำ'] },
-      { name: 'Classic Rim', brand: 'OptiWell', category: 'frames', price: 890, fw: 132, lw: 52, lh: 40, age: 1,
-        colors: ['ดำ', 'กระ', 'เงิน'] },
-      { name: 'Slim Titanium', brand: 'OptiWell', category: 'frames', price: 1490, fw: 134, lw: 50, lh: 38, age: 3,
-        colors: ['เงิน', 'ทอง'] },
-      { name: 'Round Vintage', brand: 'Luna', category: 'frames', price: 990, fw: 130, lw: 46, lh: 44, age: 10,
-        colors: ['น้ำตาล', 'ดำ'] },
-      { name: 'Clear Acetate', brand: 'OptiWell', category: 'frames', price: 790, fw: 136, lw: 52, lh: 40, age: 15,
-        colors: ['ใส', 'เบจ'] },
-      { name: 'Browline Bold', brand: 'RayVue', category: 'frames', price: 1090, fw: 138, lw: 54, lh: 42, age: 25,
-        colors: ['ดำ', 'น้ำตาลเข้ม'] },
-      { name: 'Kids Explorer', brand: 'LittleSpecs', category: 'kids', price: 690, fw: 118, lw: 44, lh: 36, age: 1,
-        colors: ['ฟ้า', 'ชมพู', 'เหลือง'] },
-      { name: 'Kids Flexible Bear', brand: 'LittleSpecs', category: 'kids', price: 790, fw: 116, lw: 42, lh: 34, age: 6,
-        colors: ['ส้ม', 'เขียว'] },
-      { name: 'ผ้าเช็ดแว่นไมโครไฟเบอร์', brand: 'CareLens', category: 'accessories', price: 59, fw: null, lw: null, lh: null, age: 0,
-        colors: ['เทา', 'ฟ้า', 'ชมพู'] },
-      { name: 'ซองแว่นตากำมะหยี่', brand: 'CareLens', category: 'accessories', price: 129, fw: null, lw: null, lh: null, age: 4,
-        colors: ['ดำ', 'น้ำตาล'] },
-      { name: 'กล่องแว่นตาแข็งพกพา', brand: 'CareLens', category: 'accessories', price: 179, fw: null, lw: null, lh: null, age: 12,
-        colors: ['ดำ', 'ขาว'] },
-      { name: 'สเปรย์ทำความสะอาดเลนส์', brand: 'CareLens', category: 'accessories', price: 89, fw: null, lw: null, lh: null, age: 30,
-        colors: ['ใส'] },
-    ];
+  // ---------- mapping: snake_case (Supabase) <-> camelCase (โค้ดฝั่งหน้าเว็บ) ----------
+  function mapProduct(row) {
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      brand: row.brand,
+      category: row.category,
+      price: Number(row.price),
+      frameWidth: row.frame_width,
+      lensWidth: row.lens_width,
+      lensHeight: row.lens_height,
+      bridgeWidth: row.bridge_width,
+      templeLength: row.temple_length,
+      accWidth: row.acc_width,
+      accLength: row.acc_length,
+      material: row.material,
+      images: row.images || [],
+      imagesOriginal: row.images_original || [],
+      createdAt: row.created_at,
+      variants: (row.variants || []).map((v) => ({ id: v.id, color: v.color, stock: v.stock, images: v.images || [] })),
+    };
+  }
 
-    const products = seedDefs.map((def, idx) => {
-      const code = 'C' + (idx + 1);
-      const variants = def.colors.map((color, ci) => ({
-        id: uid('v'),
-        color,
-        stock: (idx + ci) % 7 === 0 ? 0 : (ci === 0 ? 2 : 8 + ci),
-        images: [placeholderImage(def.name, color, def.category)],
-      }));
-      return {
-        id: uid('p'),
-        code,
-        name: def.name,
-        brand: def.brand,
-        category: def.category,
-        price: def.price,
-        frameWidth: def.fw,
-        lensWidth: def.lw,
-        lensHeight: def.lh,
-        createdAt: daysAgoISO(def.age),
-        variants,
-      };
-    });
+  function productToApiBody(product) {
+    const body = {
+      code: product.code,
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+      price: product.price,
+      frame_width: product.frameWidth,
+      lens_width: product.lensWidth,
+      lens_height: product.lensHeight,
+      bridge_width: product.bridgeWidth,
+      temple_length: product.templeLength,
+      acc_width: product.accWidth,
+      acc_length: product.accLength,
+      material: product.material,
+      images: product.images || [],
+      images_original: product.imagesOriginal || [],
+      variants: (product.variants || []).map((v) => {
+        const row = { color: v.color, stock: v.stock || 0, images: v.images || [] };
+        if (v.id) row.id = v.id;
+        return row;
+      }),
+    };
+    if (product.id) body.id = product.id;
+    return body;
+  }
 
-    write(KEYS.products, products);
-    write(KEYS.seq, { product: products.length });
-    write(KEYS.orders, []);
-    write(KEYS.customers, []);
-    write(KEYS.restocks, []);
-    write(KEYS.promotions, []);
-    write(KEYS.reviews, []);
-    if (!read(KEYS.config, null)) {
-      write(KEYS.config, { promptpayId: '0000000000', lowStockThreshold: 2, adminPassword: 'admin1234' });
-    }
+  function mapOrderItem(it) {
+    return {
+      productId: it.product_id, variantId: it.variant_id, code: it.code,
+      name: it.name, color: it.color, qty: it.qty, price: Number(it.price), image: it.image,
+    };
+  }
+
+  function mapCustomer(row) {
+    return {
+      phone: row.phone, name: row.name, lineId: row.line_id, address: row.address,
+      subdistrict: row.subdistrict, district: row.district, province: row.province,
+      zipcode: row.zipcode, createdAt: row.created_at,
+    };
+  }
+
+  // ต้องเรียกหลัง cache.customers โหลดแล้ว เพราะ join ลูกค้าเข้ากับออเดอร์ฝั่ง client
+  // (ตาราง orders เก็บแค่ customer_phone อ้างอิง ไม่ได้ฝัง snapshot ลูกค้าทั้งก้อนเหมือน mock เดิม)
+  function mapOrder(row) {
+    const cust = cache.customers.find((c) => c.phone === row.customer_phone) || { phone: row.customer_phone };
+    return {
+      id: row.id,
+      orderNo: row.order_no,
+      status: row.status,
+      total: Number(row.total),
+      subtotal: row.subtotal != null ? Number(row.subtotal) : Number(row.total),
+      shippingFee: Number(row.shipping_fee) || 0,
+      smallOrderFee: Number(row.small_order_fee) || 0,
+      codFee: Number(row.cod_fee) || 0,
+      discountAmount: Number(row.discount_amount) || 0,
+      paymentMethod: row.payment_method || 'promptpay',
+      promoCode: row.promo_code || null,
+      paymentSlip: row.payment_slip || null,
+      trackingNo: row.tracking_no || null,
+      courier: row.courier || null,
+      codDeliveryStatus: row.cod_delivery_status || null,
+      customer: cust,
+      items: (row.items || []).map(mapOrderItem),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  function mapConfig(row) {
+    return {
+      promptpayId: row.promptpay_id,
+      lowStockThreshold: row.low_stock_threshold,
+      shopPhone: row.shop_phone || '',
+      shopAddress: row.shop_address || '',
+    };
+  }
+
+  // ---------- cache ----------
+  const cache = { products: [], orders: [], customers: [], config: { promptpayId: '0000000000', lowStockThreshold: 2, shopPhone: '', shopAddress: '' } };
+
+  async function init() {
+    const [customersRaw, productsRaw, ordersRaw, configRaw] = await Promise.all([
+      apiFetch('/api/customers'),
+      apiFetch('/api/products'),
+      apiFetch('/api/orders'),
+      apiFetch('/api/config'),
+    ]);
+    cache.customers = customersRaw.map(mapCustomer);
+    cache.products = productsRaw.map(mapProduct);
+    cache.orders = ordersRaw.map(mapOrder); // ต้องมาหลัง customers เพราะ mapOrder join จาก cache.customers
+    cache.config = mapConfig(configRaw);
+  }
+
+  function upsertCachedCustomer(customerData) {
+    const idx = cache.customers.findIndex((c) => c.phone === customerData.phone);
+    const merged = {
+      phone: customerData.phone, name: customerData.name, lineId: customerData.lineId,
+      address: customerData.address, subdistrict: customerData.subdistrict, district: customerData.district,
+      province: customerData.province, zipcode: customerData.zipcode,
+      createdAt: idx >= 0 ? cache.customers[idx].createdAt : new Date().toISOString(),
+    };
+    if (idx >= 0) cache.customers[idx] = merged; else cache.customers.unshift(merged);
   }
 
   // ---------- Products ----------
-  function getProducts() { return read(KEYS.products, []); }
-  function getProduct(id) { return getProducts().find(p => p.id === id) || null; }
-  function getProductByCode(code) { return getProducts().find(p => p.code.toLowerCase() === String(code).toLowerCase()) || null; }
-
-  function saveProduct(product) {
-    const all = getProducts();
-    if (product.id) {
-      const idx = all.findIndex(p => p.id === product.id);
-      if (idx >= 0) { all[idx] = product; write(KEYS.products, all); return product; }
-    }
-    product.id = uid('p');
-    if (!product.code) product.code = 'C' + nextSeq('product');
-    if (!product.createdAt) product.createdAt = new Date().toISOString();
-    all.unshift(product);
-    write(KEYS.products, all);
-    return product;
-  }
-
-  function deleteProduct(id) {
-    write(KEYS.products, getProducts().filter(p => p.id !== id));
-  }
+  function getProducts() { return cache.products; }
+  function getProduct(id) { return cache.products.find((p) => p.id === id) || null; }
+  function getProductByCode(code) { return cache.products.find((p) => p.code.toLowerCase() === String(code).toLowerCase()) || null; }
 
   function generateNextCode() {
-    const all = getProducts();
     let max = 0;
-    all.forEach(p => {
+    cache.products.forEach((p) => {
       const m = /^C(\d+)$/i.exec(p.code || '');
       if (m) max = Math.max(max, parseInt(m[1], 10));
     });
     return 'C' + (max + 1);
   }
 
-  function updateVariantStock(productId, variantId, newStock) {
-    const all = getProducts();
-    const p = all.find(x => x.id === productId);
-    if (!p) return;
-    const v = p.variants.find(x => x.id === variantId);
-    if (!v) return;
-    v.stock = Math.max(0, parseInt(newStock, 10) || 0);
-    write(KEYS.products, all);
+  async function saveProduct(product) {
+    const body = productToApiBody(product);
+    const { id } = await apiFetch('/api/products', { method: 'POST', body: JSON.stringify(body) });
+    // สินค้า/ตัวเลือกสีอาจถูกเพิ่ม/ลบ/reassign id ฝั่งเซิร์ฟเวอร์ — ดึงรายการสินค้าใหม่ทั้งก้อนให้ตรงกันชัวร์ๆ
+    const productsRaw = await apiFetch('/api/products');
+    cache.products = productsRaw.map(mapProduct);
+    return cache.products.find((p) => p.id === id) || null;
   }
 
-  function isNew(product) {
-    const created = new Date(product.createdAt).getTime();
-    const diffDays = (Date.now() - created) / 86400000;
-    return diffDays <= 3;
+  async function deleteProduct(id) {
+    await apiFetch('/api/products?id=' + encodeURIComponent(id), { method: 'DELETE' });
+    cache.products = cache.products.filter((p) => p.id !== id);
+  }
+
+  async function updateVariantStock(productId, variantId, newStock) {
+    const stock = Math.max(0, parseInt(newStock, 10) || 0);
+    await apiFetch('/api/products', { method: 'PATCH', body: JSON.stringify({ variantId, stock }) });
+    const p = cache.products.find((x) => x.id === productId);
+    const v = p && p.variants.find((x) => x.id === variantId);
+    if (v) v.stock = stock;
   }
 
   // ---------- Orders ----------
@@ -210,7 +251,6 @@
     4: 'จัดส่งแล้ว',
   };
 
-  // รายชื่อขนส่งที่ร้านใช้ — key ใช้เก็บในออเดอร์, value ใช้แสดงผล
   const COURIERS = {
     kex: 'KEX (Kerry Express)',
     flash: 'Flash Express',
@@ -219,117 +259,99 @@
     spx: 'SPX Express',
   };
 
-  function getOrders() { return read(KEYS.orders, []); }
-  function getOrder(id) { return getOrders().find(o => o.id === id) || null; }
+  function getOrders() { return cache.orders; }
+  function getOrder(id) { return cache.orders.find((o) => o.id === id) || null; }
+  function getOrdersForPhone(phone) {
+    const p = String(phone || '').trim();
+    return cache.orders.filter((o) => o.customer.phone === p);
+  }
 
-  function createOrder({ items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer, paymentMethod, promoCode, paymentSlip }) {
-    const orders = getOrders();
-    const orderNo = 'OD' + Date.now().toString().slice(-8) + String(orders.length + 1).padStart(3, '0');
+  async function createOrder({ items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer, paymentMethod, promoCode, paymentSlip }) {
+    const body = {
+      items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer,
+      paymentMethod: paymentMethod || 'promptpay', promoCode: promoCode || null, paymentSlip: paymentSlip || null,
+    };
+    const resp = await apiFetch('/api/orders', { method: 'POST', body: JSON.stringify(body) });
+
     const order = {
-      id: uid('o'),
-      orderNo,
-      items,
-      subtotal: subtotal != null ? subtotal : total,
-      shippingFee: shippingFee || 0,
-      smallOrderFee: smallOrderFee || 0,
-      codFee: codFee || 0,
-      discountAmount: discountAmount || 0,
-      total,
-      customer,
-      paymentMethod: paymentMethod || 'promptpay',
-      promoCode: promoCode || null,
-      paymentSlip: paymentSlip || null,
+      id: resp.id,
+      orderNo: resp.order_no,
+      status: resp.status,
+      total: Number(resp.total),
+      subtotal: resp.subtotal != null ? Number(resp.subtotal) : subtotal,
+      shippingFee: Number(resp.shipping_fee) || 0,
+      smallOrderFee: Number(resp.small_order_fee) || 0,
+      codFee: Number(resp.cod_fee) || 0,
+      discountAmount: Number(resp.discount_amount) || 0,
+      paymentMethod: resp.payment_method || 'promptpay',
+      promoCode: resp.promo_code || null,
+      paymentSlip: resp.payment_slip || null,
       trackingNo: null,
       courier: null,
-      codDeliveryStatus: null, // null | 'delivered' | 'returned' — เฉพาะออเดอร์ COD หลังสถานะจัดส่งแล้ว
-      status: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      codDeliveryStatus: null,
+      customer,
+      items: resp.items || items,
+      createdAt: resp.created_at,
+      updatedAt: resp.updated_at,
     };
-    orders.unshift(order);
-    write(KEYS.orders, orders);
+    cache.orders.unshift(order);
+    upsertCachedCustomer(customer);
 
-    // ลดสต็อกทันทีที่สั่งซื้อ
-    const products = getProducts();
-    items.forEach(item => {
-      const p = products.find(x => x.id === item.productId);
-      if (!p) return;
-      const v = p.variants.find(x => x.id === item.variantId);
-      if (!v) return;
-      v.stock = Math.max(0, v.stock - item.qty);
+    // ลดสต็อกใน cache ให้ตรงกับที่ /api/orders ลดให้จริงแล้วฝั่งเซิร์ฟเวอร์
+    items.forEach((item) => {
+      const p = cache.products.find((x) => x.id === item.productId);
+      const v = p && p.variants.find((x) => x.id === item.variantId);
+      if (v) v.stock = Math.max(0, v.stock - item.qty);
     });
-    write(KEYS.products, products);
 
     if (promoCode) redeemPromotion(promoCode);
-
-    upsertCustomerFromOrder(order);
     return order;
   }
 
-  function updateOrderStatus(id, status) {
-    const orders = getOrders();
-    const o = orders.find(x => x.id === id);
-    if (!o) return;
-    o.status = status;
-    o.updatedAt = new Date().toISOString();
-    write(KEYS.orders, orders);
+  async function updateOrderStatus(id, status) {
+    await apiFetch('/api/orders', { method: 'PATCH', body: JSON.stringify({ id, status }) });
+    const o = cache.orders.find((x) => x.id === id);
+    if (o) { o.status = status; o.updatedAt = new Date().toISOString(); }
   }
 
   function nextStatus(status) { return Math.min(4, status + 1); }
 
-  // บันทึกขนส่ง + เลข tracking แล้วปรับสถานะเป็น "จัดส่งแล้ว" (4) ในขั้นตอนเดียว — บังคับให้มีทั้งขนส่งและเลข tracking ก่อนเข้าสถานะนี้เสมอ
-  function setTrackingAndShip(id, trackingNo, courier) {
-    const orders = getOrders();
-    const o = orders.find(x => x.id === id);
+  async function setTrackingAndShip(id, trackingNo, courier) {
+    const trimmed = String(trackingNo || '').trim();
+    await apiFetch('/api/orders', { method: 'PATCH', body: JSON.stringify({ id, trackingNo: trimmed, courier, status: 4 }) });
+    const o = cache.orders.find((x) => x.id === id);
     if (!o) return null;
-    o.trackingNo = String(trackingNo || '').trim();
+    o.trackingNo = trimmed;
     o.courier = courier || null;
     o.status = 4;
     o.updatedAt = new Date().toISOString();
-    write(KEYS.orders, orders);
     return o;
   }
 
-  // ค้นหาออเดอร์ทั้งหมดของเบอร์นี้สำหรับหน้าเช็คสถานะฝั่งลูกค้า — ลูกค้าเลือกออเดอร์เองจากวันที่สั่ง (getOrders คืนค่าใหม่สุดก่อนอยู่แล้ว)
-  function getOrdersForPhone(phone) {
-    const p = String(phone || '').trim();
-    return getOrders().filter(o => o.customer.phone === p);
+  async function markCodDelivered(id) {
+    await apiFetch('/api/orders', { method: 'PATCH', body: JSON.stringify({ id, codDeliveryStatus: 'delivered' }) });
+    const o = cache.orders.find((x) => x.id === id);
+    if (o) { o.codDeliveryStatus = 'delivered'; o.updatedAt = new Date().toISOString(); }
   }
 
-  // ผลการส่งของออเดอร์ COD: ส่งสำเร็จ (เก็บเงินได้จริง) หรือตีกลับ (คืนสต็อกให้อัตโนมัติ)
-  function markCodDelivered(id) {
-    const orders = getOrders();
-    const o = orders.find(x => x.id === id);
-    if (!o) return;
-    o.codDeliveryStatus = 'delivered';
-    o.updatedAt = new Date().toISOString();
-    write(KEYS.orders, orders);
-  }
-
-  function markCodReturned(id) {
-    const orders = getOrders();
-    const o = orders.find(x => x.id === id);
-    if (!o) return;
-    if (o.codDeliveryStatus === 'returned') return; // กันคืนสต็อกซ้ำ
+  async function markCodReturned(id) {
+    const o = cache.orders.find((x) => x.id === id);
+    if (!o || o.codDeliveryStatus === 'returned') return; // กันคืนสต็อกซ้ำ
+    await apiFetch('/api/orders', { method: 'PATCH', body: JSON.stringify({ id, codDeliveryStatus: 'returned' }) });
     o.codDeliveryStatus = 'returned';
     o.updatedAt = new Date().toISOString();
-    write(KEYS.orders, orders);
-    // คืนสต็อกสินค้าที่ตีกลับให้อัตโนมัติ (ไม่ต้องมานั่งเพิ่มสต็อกเองอีกรอบ)
-    const products = getProducts();
-    o.items.forEach(item => {
-      const p = products.find(x => x.id === item.productId);
-      if (!p) return;
-      const v = p.variants.find(x => x.id === item.variantId);
-      if (!v) return;
-      v.stock += item.qty;
-    });
-    write(KEYS.products, products);
+    // คืนสต็อกสินค้าที่ตีกลับให้อัตโนมัติทีละรายการผ่าน API เดียวกับหน้าแก้สต็อก
+    for (const item of o.items) {
+      const p = cache.products.find((x) => x.id === item.productId);
+      const v = p && p.variants.find((x) => x.id === item.variantId);
+      if (v) await updateVariantStock(item.productId, item.variantId, v.stock + item.qty);
+    }
   }
 
-  // ---------- Restocks (ใบสั่งซื้อเข้าสต็อก) ----------
+  // ---------- Restocks (ใบสั่งซื้อเข้าสต็อก) — ยังไม่มี API เชื่อม Supabase คงไว้บน localStorage ----------
   // สถานะ: 1 = รอของเข้า (รอตรวจรับ), 2 = ตรวจรับเข้าสต็อกแล้ว
   function getRestocks() { return read(KEYS.restocks, []); }
-  function getRestock(id) { return getRestocks().find(r => r.id === id) || null; }
+  function getRestock(id) { return getRestocks().find((r) => r.id === id) || null; }
 
   function createRestock({ items, note }) {
     const restocks = getRestocks();
@@ -338,7 +360,7 @@
       id: uid('r'),
       poNo,
       note: note || '',
-      items: items.map(it => ({ ...it, qtyReceived: it.qtyOrdered })),
+      items: items.map((it) => ({ ...it, qtyReceived: it.qtyOrdered })),
       status: 1,
       createdAt: new Date().toISOString(),
       receivedAt: null,
@@ -350,77 +372,40 @@
 
   function updateRestockReceivedQty(restockId, itemIndex, qty) {
     const restocks = getRestocks();
-    const r = restocks.find(x => x.id === restockId);
+    const r = restocks.find((x) => x.id === restockId);
     if (!r || r.status !== 1) return;
     if (!r.items[itemIndex]) return;
     r.items[itemIndex].qtyReceived = Math.max(0, parseInt(qty, 10) || 0);
     write(KEYS.restocks, restocks);
   }
 
-  function confirmRestockReceive(restockId) {
+  async function confirmRestockReceive(restockId) {
     const restocks = getRestocks();
-    const r = restocks.find(x => x.id === restockId);
+    const r = restocks.find((x) => x.id === restockId);
     if (!r || r.status !== 1) return;
-    const products = getProducts();
-    r.items.forEach(it => {
-      const p = products.find(x => x.id === it.productId);
-      if (!p) return;
-      const v = p.variants.find(x => x.id === it.variantId);
-      if (!v) return;
-      v.stock += Number(it.qtyReceived) || 0;
-    });
-    write(KEYS.products, products);
+    for (const it of r.items) {
+      const p = cache.products.find((x) => x.id === it.productId);
+      const v = p && p.variants.find((x) => x.id === it.variantId);
+      if (v) await updateVariantStock(it.productId, it.variantId, v.stock + (Number(it.qtyReceived) || 0));
+    }
     r.status = 2;
     r.receivedAt = new Date().toISOString();
     write(KEYS.restocks, restocks);
   }
 
-  function pendingRestockCount() { return getRestocks().filter(r => r.status === 1).length; }
+  function pendingRestockCount() { return getRestocks().filter((r) => r.status === 1).length; }
 
-  // ---------- Customers (CRM, keyed by phone, ไม่มีระบบสมาชิก) ----------
-  function getCustomers() { return read(KEYS.customers, []); }
-  function getCustomerByPhone(phone) { return getCustomers().find(c => c.phone === phone) || null; }
-
-  function upsertCustomerFromOrder(order) {
-    const customers = getCustomers();
-    const phone = order.customer.phone;
-    let c = customers.find(x => x.phone === phone);
-    if (!c) {
-      c = {
-        phone,
-        name: order.customer.name,
-        lineId: order.customer.lineId,
-        address: order.customer.address,
-        subdistrict: order.customer.subdistrict,
-        district: order.customer.district,
-        province: order.customer.province,
-        zipcode: order.customer.zipcode,
-        orderIds: [],
-        createdAt: new Date().toISOString(),
-      };
-      customers.push(c);
-    } else {
-      // อัปเดตข้อมูลล่าสุดของลูกค้า
-      c.name = order.customer.name;
-      c.lineId = order.customer.lineId;
-      c.address = order.customer.address;
-      c.subdistrict = order.customer.subdistrict;
-      c.district = order.customer.district;
-      c.province = order.customer.province;
-      c.zipcode = order.customer.zipcode;
-    }
-    c.orderIds.push(order.id);
-    write(KEYS.customers, customers);
-  }
+  // ---------- Customers ----------
+  function getCustomers() { return cache.customers; }
+  function getCustomerByPhone(phone) { return cache.customers.find((c) => c.phone === phone) || null; }
 
   function getCustomerStats(phone) {
-    const orders = getOrders().filter(o => o.customer.phone === phone);
+    const orders = cache.orders.filter((o) => o.customer.phone === phone);
     const totalSpent = orders.reduce((s, o) => s + o.total, 0);
     return { orders, totalSpent, orderCount: orders.length };
   }
 
-  // ---------- Shipping ----------
-  // น้ำหนักต่อหน่วย: แว่นตา/กรอบแว่น = 100 กรัม, อุปกรณ์เสริม = 500 กรัม (บางรายการขายเป็นโหล/แพ็ค ไม่ใช่ต่อชิ้น)
+  // ---------- Shipping (คำนวณล้วนๆ ไม่มีการเก็บข้อมูล ไม่แตะ) ----------
   const UNIT_WEIGHT_EYEWEAR_G = 100;
   const UNIT_WEIGHT_ACCESSORY_G = 500;
   const SHIPPING_TIERS = [
@@ -434,8 +419,8 @@
     { maxKg: 20, fee: 350 },
   ];
   const COD_MAX_KG = 2;
-  const COD_FEE = 100; // ค่าบริการเก็บเงินปลายทาง บวกเพิ่มต่อออเดอร์
-  const SMALL_ORDER_MIN_QTY = 12; // ต่ำกว่านี้ (ชิ้น) จะเก็บค่าบริการออเดอร์เล็กเพิ่ม
+  const COD_FEE = 100;
+  const SMALL_ORDER_MIN_QTY = 12;
   const SMALL_ORDER_FEE = 50;
 
   function calcSmallOrderFee(cartItems) {
@@ -448,7 +433,6 @@
     return (p && p.category === 'accessories') ? UNIT_WEIGHT_ACCESSORY_G : UNIT_WEIGHT_EYEWEAR_G;
   }
 
-  // cartItems: array of { productId, qty, ... } — ใช้ได้ทั้งตะกร้าตอนเช็คเอาท์และ order.items ที่บันทึกแล้ว
   function calcCartWeightGrams(cartItems) {
     return (cartItems || []).reduce((sum, it) => sum + it.qty * unitWeightForProduct(it.productId), 0);
   }
@@ -458,17 +442,69 @@
     for (const tier of SHIPPING_TIERS) {
       if (kg <= tier.maxKg) return tier.fee;
     }
-    return null; // เกิน 20kg — ต้องติดต่อร้านเพื่อสอบถามค่าส่งเอง ยังไม่มีเกณฑ์อัตโนมัติ
+    return null;
   }
 
   function isCodAvailable(cartItems) { return calcCartWeightGrams(cartItems) / 1000 <= COD_MAX_KG; }
 
-  // ---------- Promotions (คูปองส่งฟรี) ----------
+  // ---------- Config ----------
+  function getConfig() { return cache.config; }
+
+  async function setConfig(patch) {
+    await apiFetch('/api/config', { method: 'POST', body: JSON.stringify(patch) });
+    const merged = Object.assign({}, cache.config);
+    if (patch.promptpayId != null) merged.promptpayId = patch.promptpayId;
+    if (patch.lowStockThreshold != null) merged.lowStockThreshold = patch.lowStockThreshold;
+    if (patch.shopPhone != null) merged.shopPhone = patch.shopPhone;
+    if (patch.shopAddress != null) merged.shopAddress = patch.shopAddress;
+    cache.config = merged;
+  }
+
+  async function verifyAdminPassword(password) {
+    const resp = await apiFetch('/api/config', { method: 'POST', body: JSON.stringify({ verifyPassword: password }) });
+    return !!resp.ok;
+  }
+
+  // ---------- Dashboard helpers ----------
+  function monthSales() {
+    const now = new Date();
+    const orders = cache.orders.filter((o) => {
+      const d = new Date(o.createdAt);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+    return orders.reduce((s, o) => s + o.total, 0);
+  }
+  function pendingOrderCount() {
+    return cache.orders.filter((o) => o.status < 4).length;
+  }
+  function bestSellers(limit) {
+    const counts = {};
+    cache.orders.forEach((o) => {
+      o.items.forEach((it) => {
+        const key = it.productId + '|' + it.name;
+        counts[key] = counts[key] || { name: it.name, code: it.code, qty: 0 };
+        counts[key].qty += it.qty;
+      });
+    });
+    return Object.values(counts).sort((a, b) => b.qty - a.qty).slice(0, limit || 5);
+  }
+  function lowStockVariants(threshold) {
+    const th = threshold != null ? threshold : cache.config.lowStockThreshold;
+    const out = [];
+    cache.products.forEach((p) => {
+      p.variants.forEach((v) => {
+        if (v.stock <= th) out.push({ product: p, variant: v });
+      });
+    });
+    return out;
+  }
+
+  // ---------- Promotions (คูปองส่งฟรี) — ยังไม่มี API เชื่อม Supabase คงไว้บน localStorage ----------
   function getPromotions() { return read(KEYS.promotions, []); }
-  function getPromotion(id) { return getPromotions().find(p => p.id === id) || null; }
+  function getPromotion(id) { return getPromotions().find((p) => p.id === id) || null; }
   function getPromotionByCode(code) {
     const norm = String(code || '').trim().toUpperCase();
-    return getPromotions().find(p => p.code.toUpperCase() === norm) || null;
+    return getPromotions().find((p) => p.code.toUpperCase() === norm) || null;
   }
 
   function createPromotion({ code, maxUses, type, discountAmount }) {
@@ -492,41 +528,39 @@
 
   function setPromotionActive(id, active) {
     const promos = getPromotions();
-    const p = promos.find(x => x.id === id);
+    const p = promos.find((x) => x.id === id);
     if (!p) return;
     p.active = !!active;
     write(KEYS.promotions, promos);
   }
 
   function deletePromotion(id) {
-    write(KEYS.promotions, getPromotions().filter(p => p.id !== id));
+    write(KEYS.promotions, getPromotions().filter((p) => p.id !== id));
   }
 
-  // เรียกตอนลูกค้ากรอกโค้ดแล้วระบบตรวจสอบผ่าน (นับเป็น "เก็บ/ใช้โค้ดในตะกร้า" แม้ยังไม่กดยืนยันคำสั่งซื้อ)
   function applyPromotion(code) {
     const promo = getPromotionByCode(code);
     if (!promo) return { ok: false, reason: 'notfound' };
     if (!promo.active) return { ok: false, reason: 'inactive' };
     if (promo.timesRedeemed >= promo.maxUses) return { ok: false, reason: 'exhausted' };
     const promos = getPromotions();
-    const p = promos.find(x => x.id === promo.id);
+    const p = promos.find((x) => x.id === promo.id);
     p.timesApplied += 1;
     write(KEYS.promotions, promos);
     return { ok: true, promotion: p };
   }
 
-  // เรียกตอนคำสั่งซื้อสำเร็จจริง (นับเป็น "ใช้จริง")
   function redeemPromotion(code) {
     const promo = getPromotionByCode(code);
     if (!promo) return;
     const promos = getPromotions();
-    const p = promos.find(x => x.id === promo.id);
+    const p = promos.find((x) => x.id === promo.id);
     if (!p) return;
     p.timesRedeemed += 1;
     write(KEYS.promotions, promos);
   }
 
-  // ---------- Reviews (รีวิวร้านค้าโดยรวม เฉพาะลูกค้าที่เคยสั่งซื้อจริง — 1 ออเดอร์ = 1 รีวิว) ----------
+  // ---------- Reviews — ยังไม่มี API เชื่อม Supabase คงไว้บน localStorage ----------
   function getReviews() { return read(KEYS.reviews, []); }
 
   function getStoreRatingSummary() {
@@ -536,10 +570,9 @@
     return { count: reviews.length, average: Math.round((sum / reviews.length) * 10) / 10 };
   }
 
-  // หาออเดอร์ของเบอร์นี้ที่ "จัดส่งแล้ว" และยังไม่เคยรีวิว (1 ออเดอร์รีวิวได้ครั้งเดียว)
   function getReviewableOrdersForPhone(phone) {
     const reviews = getReviews();
-    return getOrders().filter(o => o.customer.phone === phone && o.status === 4 && !reviews.some(r => r.orderId === o.id));
+    return cache.orders.filter((o) => o.customer.phone === phone && o.status === 4 && !reviews.some((r) => r.orderId === o.id));
   }
 
   function submitReview({ orderId, phone, customerName, rating, comment }) {
@@ -558,13 +591,12 @@
   }
 
   function deleteReview(id) {
-    write(KEYS.reviews, getReviews().filter(r => r.id !== id));
+    write(KEYS.reviews, getReviews().filter((r) => r.id !== id));
   }
 
-  // แก้ไขรีวิวจากฝั่งแอดมิน (คะแนน และ/หรือ ความคิดเห็น)
   function updateReview(id, { rating, comment }) {
     const reviews = getReviews();
-    const r = reviews.find(x => x.id === id);
+    const r = reviews.find((x) => x.id === id);
     if (!r) return null;
     if (rating != null) r.rating = Math.max(1, Math.min(5, Math.round(Number(rating) || r.rating)));
     if (comment != null) r.comment = String(comment).trim();
@@ -573,53 +605,15 @@
     return r;
   }
 
-  // ---------- Config ----------
-  function getConfig() { return read(KEYS.config, { promptpayId: '0000000000', lowStockThreshold: 2, adminPassword: 'admin1234' }); }
-  function setConfig(cfg) { write(KEYS.config, Object.assign(getConfig(), cfg)); }
-
-  // ---------- Dashboard helpers ----------
-  function monthSales() {
-    const now = new Date();
-    const orders = getOrders().filter(o => {
-      const d = new Date(o.createdAt);
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-    });
-    return orders.reduce((s, o) => s + o.total, 0);
-  }
-  function pendingOrderCount() {
-    return getOrders().filter(o => o.status < 4).length;
-  }
-  function bestSellers(limit) {
-    const counts = {};
-    getOrders().forEach(o => {
-      o.items.forEach(it => {
-        const key = it.productId + '|' + it.name;
-        counts[key] = counts[key] || { name: it.name, code: it.code, qty: 0 };
-        counts[key].qty += it.qty;
-      });
-    });
-    return Object.values(counts).sort((a, b) => b.qty - a.qty).slice(0, limit || 5);
-  }
-  function lowStockVariants(threshold) {
-    const th = threshold != null ? threshold : getConfig().lowStockThreshold;
-    const out = [];
-    getProducts().forEach(p => {
-      p.variants.forEach(v => {
-        if (v.stock <= th) out.push({ product: p, variant: v });
-      });
-    });
-    return out;
-  }
-
   global.DB = {
-    seedIfEmpty,
+    init,
     placeholderImage,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
     generateNextCode, updateVariantStock, isNew,
     STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, getOrdersForPhone, markCodDelivered, markCodReturned,
     getRestocks, getRestock, createRestock, updateRestockReceivedQty, confirmRestockReceive, pendingRestockCount,
     getCustomers, getCustomerByPhone, getCustomerStats,
-    getConfig, setConfig,
+    getConfig, setConfig, verifyAdminPassword,
     monthSales, pendingOrderCount, bestSellers, lowStockVariants,
     calcCartWeightGrams, calcShippingFee, isCodAvailable, unitWeightForProduct, UNIT_WEIGHT_EYEWEAR_G, UNIT_WEIGHT_ACCESSORY_G, COD_MAX_KG, COD_FEE,
     calcSmallOrderFee, SMALL_ORDER_MIN_QTY, SMALL_ORDER_FEE,
