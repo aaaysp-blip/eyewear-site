@@ -199,6 +199,19 @@
   }
 
   const MAX_MAIN_IMAGES = 5;
+  const MAX_ORIGINAL_SIDE = 1600; // จำกัดด้านยาวสุดของรูปต้นฉบับที่เก็บไว้ (กันรูปกล้องมือถือ 4000px+ กิน DB storage เปล่าๆ — ความละเอียดนี้ยังพอสำหรับครอป/AI อ่านข้อมูล)
+
+  // ย่อรูปให้ด้านยาวสุดไม่เกิน maxSide ถ้ารูปต้นฉบับใหญ่กว่านั้น (ถ้าเล็กกว่าอยู่แล้วคืนค่าเดิมไม่แตะ)
+  function resizeDataUrlIfNeeded(img, dataUrl, maxSide) {
+    const longSide = Math.max(img.naturalWidth, img.naturalHeight);
+    if (longSide <= maxSide) return dataUrl;
+    const scale = maxSide / longSide;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.9);
+  }
 
   async function handleFiles(fileList) {
     const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
@@ -213,8 +226,8 @@
     for (const file of files) {
       if (remaining <= 0) break;
       try {
-        const { dataUrl } = await ColorDetect.loadImageFromFile(file);
-        mainImageCropQueue.push(dataUrl);
+        const { img, dataUrl } = await ColorDetect.loadImageFromFile(file);
+        mainImageCropQueue.push(resizeDataUrlIfNeeded(img, dataUrl, MAX_ORIGINAL_SIDE));
         remaining--;
       } catch (e) {
         console.error(e);
