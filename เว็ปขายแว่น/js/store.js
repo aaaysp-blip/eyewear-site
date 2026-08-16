@@ -462,7 +462,7 @@
     reviewModal.classList.add('show');
   });
 
-  document.getElementById('btnReviewLookup').addEventListener('click', () => {
+  document.getElementById('btnReviewLookup').addEventListener('click', async () => {
     const phone = document.getElementById('reviewPhoneInput').value.trim();
     const msg = document.getElementById('reviewLookupMsg');
     const listWrap = document.getElementById('reviewableList');
@@ -472,6 +472,7 @@
       return;
     }
     msg.textContent = '';
+    await DB.ready(); // กันกรณีกดเร็วมากก่อนข้อมูลออเดอร์/รีวิวโหลดเสร็จ
     const orders = DB.getReviewableOrdersForPhone(phone);
     renderReviewableList(orders, phone);
   });
@@ -576,12 +577,13 @@
   document.getElementById('btnTrackLookup').addEventListener('click', runTrackLookup);
   document.getElementById('trackPhoneInput').addEventListener('keydown', e => { if (e.key === 'Enter') runTrackLookup(); });
 
-  function runTrackLookup() {
+  async function runTrackLookup() {
     const phone = document.getElementById('trackPhoneInput').value.trim();
     const msg = document.getElementById('trackLookupMsg');
     const listWrap = document.getElementById('trackOrderList');
     document.getElementById('trackResult').innerHTML = '';
     if (!/^0\d{8,9}$/.test(phone)) { msg.textContent = 'กรุณากรอกเบอร์โทรให้ถูกต้อง'; listWrap.innerHTML = ''; return; }
+    await DB.ready(); // กันกรณีกดเร็วมากก่อนข้อมูลออเดอร์โหลดเสร็จ
     const orders = DB.getOrdersForPhone(phone);
     if (!orders.length) { msg.textContent = 'ไม่พบออเดอร์สำหรับเบอร์นี้'; listWrap.innerHTML = ''; return; }
     msg.textContent = '';
@@ -1049,11 +1051,14 @@
   }
 
   // ---------------- init ----------------
+  // แสดงการ์ดสินค้าทันทีที่โหลดสินค้าเสร็จ ไม่ต้องรอออเดอร์/ลูกค้า/โปรโมชั่น/รีวิว (โหลดต่อเบื้องหลัง)
   DB.init().then(() => {
     renderCartCount();
     updateFilterBadge();
-    renderStoreRating();
     renderGrid();
+    DB.ready().then(() => {
+      renderStoreRating(); // ต้องรอรีวิวโหลดเสร็จก่อนถึงจะคำนวณคะแนนเฉลี่ยได้
+    });
   }).catch((err) => {
     console.error('DB.init failed', err);
     document.body.insertAdjacentHTML('afterbegin',

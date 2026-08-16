@@ -71,6 +71,7 @@
     if (!appInited) {
       try {
         await DB.init();
+        await DB.ready(); // หน้าแอดมินต้องรอข้อมูลครบทุกส่วนก่อน (dashboard/ออเดอร์/ลูกค้าใช้เกือบทุกอย่างพร้อมกัน)
       } catch (err) {
         console.error('DB.init failed', err);
         alert('โหลดข้อมูลจากเซิร์ฟเวอร์ไม่สำเร็จ: ' + (err.message || err));

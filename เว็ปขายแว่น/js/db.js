@@ -195,10 +195,14 @@
     config: { promptpayId: '0000000000', lowStockThreshold: 2, shopPhone: '', shopAddress: '' },
   };
 
-  async function init() {
-    const [customersRaw, productsRaw, ordersRaw, configRaw, restocksRaw, promotionsRaw, reviewsRaw] = await Promise.all([
+  // โหลดสินค้าก่อนอันดับแรก (สิ่งเดียวที่หน้าร้านต้องใช้แสดงการ์ดสินค้า) ให้ resolve ไวที่สุด
+  // ส่วนที่เหลือ (ออเดอร์/ลูกค้า/ตั้งค่า/ใบสั่งซื้อ/โปรโมชั่น/รีวิว) โหลดคู่ขนานต่อเบื้องหลัง ไม่บล็อกตรงนี้
+  // เรียก DB.ready() ถ้าจุดไหนต้องการรอให้ข้อมูลส่วนที่เหลือพร้อมจริงๆ ก่อนใช้งาน (เช่นหน้าแอดมิน)
+  let restReadyPromise = null;
+
+  async function loadRestInBackground() {
+    const [customersRaw, ordersRaw, configRaw, restocksRaw, promotionsRaw, reviewsRaw] = await Promise.all([
       apiFetch('/api/customers'),
-      apiFetch('/api/products'),
       apiFetch('/api/orders'),
       apiFetch('/api/config'),
       apiFetch('/api/restocks'),
@@ -206,12 +210,21 @@
       apiFetch('/api/reviews'),
     ]);
     cache.customers = customersRaw.map(mapCustomer);
-    cache.products = productsRaw.map(mapProduct);
     cache.orders = ordersRaw.map(mapOrder); // ต้องมาหลัง customers เพราะ mapOrder join จาก cache.customers
     cache.config = mapConfig(configRaw);
     cache.restocks = restocksRaw.map(mapRestock);
     cache.promotions = promotionsRaw.map(mapPromotion);
     cache.reviews = reviewsRaw.map(mapReview);
+  }
+
+  async function init() {
+    restReadyPromise = loadRestInBackground();
+    const productsRaw = await apiFetch('/api/products');
+    cache.products = productsRaw.map(mapProduct);
+  }
+
+  function ready() {
+    return restReadyPromise || Promise.resolve();
   }
 
   function upsertCachedCustomer(customerData) {
@@ -608,7 +621,7 @@
   }
 
   global.DB = {
-    init,
+    init, ready,
     placeholderImage,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
     generateNextCode, updateVariantStock, isNew, renameBrand,
