@@ -6,6 +6,11 @@
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+  function paymentMethodLabel(method) {
+    if (method === 'cod') return 'เก็บเงินปลายทาง (COD)';
+    if (method === 'line') return 'Pre-order (สรุปยอด/ชำระทาง LINE)';
+    return 'พร้อมเพย์';
+  }
   function showToast(msg) {
     const el = document.getElementById('toast');
     el.textContent = msg;
@@ -1386,7 +1391,7 @@
           เลขที่ออเดอร์: ${escapeHtml(order.orderNo)}<br>
           วันที่: ${new Date(order.createdAt).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}<br>
           ลูกค้า: ${escapeHtml(c.name)} (โทร ${escapeHtml(c.phone)})<br>
-          ชำระเงิน: ${order.paymentMethod === 'cod' ? 'เก็บเงินปลายทาง (COD)' : 'พร้อมเพย์'}
+          ชำระเงิน: ${paymentMethodLabel(order.paymentMethod)}
         </div>
         <table>
           <thead><tr><th>รายการ</th><th style="text-align:center">จำนวน</th><th style="text-align:right">ราคา/ชิ้น</th><th style="text-align:right">รวม</th></tr></thead>
@@ -1426,7 +1431,7 @@
             <div><strong>เบอร์โทร:</strong> ${escapeHtml(o.customer.phone)}</div>
             <div><strong>LINE ID:</strong> ${escapeHtml(o.customer.lineId || '-')}</div>
             <div><strong>รหัสไปรษณีย์:</strong> ${escapeHtml(o.customer.zipcode)}</div>
-            <div><strong>ชำระเงิน:</strong> ${o.paymentMethod === 'cod' ? 'เก็บเงินปลายทาง (COD)' : 'พร้อมเพย์'}</div>
+            <div><strong>ชำระเงิน:</strong> ${paymentMethodLabel(o.paymentMethod)}</div>
             <div><strong>คูปอง:</strong> ${o.promoCode ? escapeHtml(o.promoCode) : '-'}</div>
             <div><strong>ขนส่ง:</strong> ${o.courier ? escapeHtml(DB.COURIERS[o.courier] || o.courier) : '-'}</div>
             <div><strong>เลข Tracking:</strong> ${o.trackingNo ? escapeHtml(o.trackingNo) : '-'}</div>
@@ -1710,6 +1715,31 @@
       document.getElementById('settingsMsg').style.color = 'var(--success)';
       document.getElementById('settingsMsg').textContent = 'บันทึกการตั้งค่าเรียบร้อย';
       setTimeout(() => document.getElementById('settingsMsg').textContent = '', 2500);
+    });
+
+    const revealPwInput = document.getElementById('stRevealPassword');
+    document.getElementById('btnRevealPreorderCode').addEventListener('click', async () => {
+      const msg = document.getElementById('preorderRevealMsg');
+      if (revealPwInput.classList.contains('hidden')) {
+        msg.textContent = '';
+        revealPwInput.classList.remove('hidden');
+        revealPwInput.focus();
+        return;
+      }
+      const pw = revealPwInput.value;
+      revealPwInput.value = '';
+      revealPwInput.classList.add('hidden');
+      const resp = await DB.revealPreorderCode(pw);
+      if (!resp.ok) {
+        msg.style.color = 'var(--danger)';
+        msg.textContent = 'รหัสผ่านไม่ถูกต้อง';
+        return;
+      }
+      msg.style.color = 'var(--success)';
+      msg.textContent = resp.preorderCode ? `รหัสปัจจุบัน: ${resp.preorderCode}` : 'ยังไม่ได้ตั้งรหัส Pre-order';
+    });
+    revealPwInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btnRevealPreorderCode').click(); }
     });
   }
   function loadSettings() {

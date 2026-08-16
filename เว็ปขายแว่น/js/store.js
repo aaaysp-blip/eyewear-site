@@ -727,6 +727,7 @@
         body.innerHTML = `<div class="empty-state"><div class="big">🛒</div>ยังไม่มีสินค้าในตะกร้า</div>`;
         return;
       }
+      const preorderMode = isPreorderUnlocked();
       const subtotal = cartTotal(cart);
       const totalQty = cartTotalQty(cart);
       const totalWeightKg = DB.calcCartWeightGrams(cart) / 1000;
@@ -735,7 +736,7 @@
       const discountAmount = currentPromoDiscount();
       const codOk = DB.isCodAvailable(cart);
       if (!codOk && checkoutPaymentMethod === 'cod') checkoutPaymentMethod = 'promptpay';
-      const codFee = currentCodFee();
+      const codFee = preorderMode ? 0 : currentCodFee();
       const overLimit = shippingFee == null;
       const grandTotal = overLimit ? null : Math.max(0, subtotal + shippingFee + smallOrderFee + codFee - discountAmount);
 
@@ -781,6 +782,9 @@
           </div>
         </div>
 
+        ${preorderMode ? `
+        <div class="tag-muted" style="margin-top:14px;color:var(--accent)">🔓 โหมด Pre-order — ข้ามขั้นตอนชำระเงิน แอดมินจะติดต่อสรุปยอด/วิธีชำระเงินให้ทาง LINE หลังได้รับออเดอร์</div>
+        ` : `
         <div class="field" style="margin-top:14px">
           <label>วิธีชำระเงิน</label>
           <div style="display:flex;gap:16px;flex-wrap:wrap">
@@ -789,9 +793,10 @@
           </div>
           ${!codOk ? `<div class="tag-muted" style="margin-top:4px">เก็บเงินปลายทางให้บริการเฉพาะน้ำหนักรวมไม่เกิน ${DB.COD_MAX_KG} กก. คำสั่งซื้อนี้เกินกำหนด จึงรองรับเฉพาะพร้อมเพย์</div>` : ''}
         </div>
+        `}
 
         ${overLimit ? `<div class="error-text">น้ำหนักรวมเกิน 20 กก. ระบบยังไม่มีเกณฑ์ค่าส่งอัตโนมัติ กรุณาติดต่อร้านโดยตรงเพื่อสอบถามค่าจัดส่งก่อนสั่งซื้อ</div>` : ''}
-        <button class="btn btn-primary btn-block" id="btnGoPayment" style="margin-top:10px" ${overLimit ? 'disabled' : ''}>ถัดไป</button>
+        <button class="btn btn-primary btn-block" id="btnGoPayment" style="margin-top:10px" ${overLimit ? 'disabled' : ''}>${preorderMode ? 'ถัดไป: กรอกที่อยู่จัดส่ง' : 'ถัดไป'}</button>
       `;
       body.querySelectorAll('[data-act]').forEach(el => {
         el.addEventListener('click', () => {
@@ -834,7 +839,7 @@
         r.addEventListener('change', e => { checkoutPaymentMethod = e.target.value; renderCheckout(); });
       });
       const goBtn = document.getElementById('btnGoPayment');
-      if (goBtn) goBtn.addEventListener('click', () => { checkoutStep = 2; renderCheckout(); });
+      if (goBtn) goBtn.addEventListener('click', () => { checkoutStep = preorderMode ? 3 : 2; renderCheckout(); });
       return;
     }
 
@@ -927,22 +932,26 @@
         document.getElementById('adZip').value = cust.zipcode || '';
         showToast('พบข้อมูลลูกค้าเดิม เติมให้อัตโนมัติแล้ว (แก้ไขได้ถ้าต้องการเปลี่ยน)');
       });
-      document.getElementById('btnBack2').addEventListener('click', () => { checkoutStep = 2; renderCheckout(); });
+      document.getElementById('btnBack2').addEventListener('click', () => { checkoutStep = isPreorderUnlocked() ? 1 : 2; renderCheckout(); });
       document.getElementById('btnConfirmOrder').addEventListener('click', submitOrder);
       return;
     }
 
     if (checkoutStep === 4) {
+      const isPreorderOrder = lastOrder && lastOrder.isPreorder;
       const codMsg = lastOrder && lastOrder.paymentMethod === 'cod'
         ? 'เตรียมเงินสดไว้ชำระกับพนักงานจัดส่งเมื่อสินค้าถึง'
         : 'แอดมินจะตรวจสอบสลิปและติดต่อกลับเพื่อยืนยันเบอร์โทร/ที่อยู่';
       body.innerHTML = `
         <div class="order-done">
           <div class="ok-icon">✅</div>
-          <div>สั่งซื้อสำเร็จ ขอบคุณที่อุดหนุนค่ะ/ครับ</div>
+          <div>${isPreorderOrder ? 'บันทึกรายการ Pre-order เรียบร้อย' : 'สั่งซื้อสำเร็จ ขอบคุณที่อุดหนุนค่ะ/ครับ'}</div>
           <div class="order-no">เลขที่ออเดอร์ ${lastOrder ? lastOrder.orderNo : ''}</div>
-          <div class="tag-muted">${codMsg}</div>
-          <button class="btn btn-primary" style="margin-top:18px" id="btnCloseDone">ปิดหน้าต่าง</button>
+          ${isPreorderOrder ? `
+            <div class="tag-muted" style="margin-top:6px">รายการนี้ยังไม่ได้ชำระเงิน — กรุณาส่ง<strong>เลขที่ออเดอร์ด้านบน</strong>ไปทาง LINE ร้าน เพื่อให้แอดมินสรุปยอดและยืนยันสินค้ากลับไปอีกครั้ง</div>
+            <a class="btn btn-primary" style="margin-top:14px;text-decoration:none" href="https://lin.ee/Th0WU0AQ" target="_blank" rel="noopener noreferrer">แชทผ่าน LINE ร้าน</a>
+          ` : `<div class="tag-muted">${codMsg}</div>`}
+          <button class="btn" style="margin-top:12px" id="btnCloseDone">ปิดหน้าต่าง</button>
         </div>
       `;
       document.getElementById('btnCloseDone').addEventListener('click', () => {
@@ -979,11 +988,12 @@
 
     const cart = getCart();
     if (!cart.length) return;
+    const preorderMode = isPreorderUnlocked();
     const subtotal = cartTotal(cart);
     const shippingFee = currentShippingFee(cart) || 0;
     const smallOrderFee = currentSmallOrderFee(cart);
     const discountAmount = currentPromoDiscount();
-    const codFee = currentCodFee();
+    const codFee = preorderMode ? 0 : currentCodFee();
     const total = Math.max(0, subtotal + shippingFee + smallOrderFee + codFee - discountAmount);
     lastOrder = await DB.createOrder({
       items: cart,
@@ -994,10 +1004,10 @@
       discountAmount,
       total,
       customer: { name, phone, lineId, address, subdistrict, district, province, zipcode },
-      paymentMethod: checkoutPaymentMethod,
+      paymentMethod: preorderMode ? 'line' : checkoutPaymentMethod,
       promoCode: checkoutPromo ? checkoutPromo.code : null,
       paymentSlip: checkoutSlipDataUrl,
-      isPreorder: isPreorderUnlocked(),
+      isPreorder: preorderMode,
     });
     setCart([]);
     checkoutPromo = null;

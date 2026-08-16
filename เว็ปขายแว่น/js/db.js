@@ -488,6 +488,11 @@
     return !!resp.ok;
   }
 
+  // ให้แอดมินดูรหัส Pre-order ปัจจุบันได้ ต้องยืนยันตัวด้วยรหัสผ่านแอดมินก่อนทุกครั้ง (กันคนอื่นแอบดู)
+  async function revealPreorderCode(adminPassword) {
+    return apiFetch('/api/config', { method: 'POST', body: JSON.stringify({ revealPreorderCode: adminPassword }) });
+  }
+
   // ---------- Dashboard helpers ----------
   function monthSales() {
     const now = new Date();
@@ -610,7 +615,7 @@
     STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, getOrdersForPhone, markCodDelivered, markCodReturned,
     getRestocks, getRestock, createRestock, updateRestockReceivedQty, confirmRestockReceive, pendingRestockCount,
     getCustomers, getCustomerByPhone, getCustomerStats,
-    getConfig, setConfig, verifyAdminPassword, verifyPreorderCode,
+    getConfig, setConfig, verifyAdminPassword, verifyPreorderCode, revealPreorderCode,
     monthSales, pendingOrderCount, bestSellers, lowStockVariants,
     calcCartWeightGrams, calcShippingFee, isCodAvailable, unitWeightForProduct, UNIT_WEIGHT_EYEWEAR_G, UNIT_WEIGHT_ACCESSORY_G, COD_MAX_KG, COD_FEE,
     calcSmallOrderFee, SMALL_ORDER_MIN_QTY, SMALL_ORDER_FEE,

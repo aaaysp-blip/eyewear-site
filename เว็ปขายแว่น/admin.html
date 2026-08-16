@@ -245,7 +245,15 @@
           <div class="field"><label>เบอร์โทรร้าน (แสดงในใบปะหน้า)</label><input type="text" id="stShopPhone" placeholder="เว้นว่างได้ถ้ายังไม่มี"></div>
           <div class="field span2"><label>ที่อยู่ร้าน (ผู้ส่งในใบปะหน้า)</label><input type="text" id="stShopAddress" placeholder="เว้นว่างได้ถ้ายังไม่มี"></div>
           <div class="field"><label>เปลี่ยนรหัสผ่านแอดมิน</label><input type="password" id="stPassword" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></div>
-          <div class="field"><label>รหัส Pre-order (แจกให้ลูกค้าเฉพาะราย)</label><input type="text" id="stPreorderCode" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></div>
+          <div class="field">
+            <label>รหัส Pre-order (แจกให้ลูกค้าเฉพาะราย)</label>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="stPreorderCode" placeholder="เว้นว่างถ้าไม่เปลี่ยน" style="flex:1">
+              <button class="btn btn-sm" id="btnRevealPreorderCode" type="button">👁 แสดงรหัสปัจจุบัน</button>
+            </div>
+            <input type="password" id="stRevealPassword" placeholder="ยืนยันรหัสผ่านแอดมินเพื่อดูรหัส Pre-order" class="hidden" style="margin-top:6px;width:100%">
+            <div class="error-text" id="preorderRevealMsg"></div>
+          </div>
         </div>
         <button class="btn btn-primary" style="margin-top:14px" id="btnSaveSettings">บันทึกการตั้งค่า</button>
         <div class="error-text" id="settingsMsg"></div>
