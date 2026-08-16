@@ -92,10 +92,20 @@
     if (view === 'promotions') renderPromotions();
     if (view === 'newProduct') {
       document.getElementById('npCode').placeholder = DB.generateNextCode();
+      if (!editingProductId) populateBrandOptions();
       renderMainImagesPreview();
       renderVariantList();
     }
     if (view === 'settings') loadSettings();
+  }
+
+  // ดึงรายชื่อแบรนด์ที่เคยลงไว้ทั้งหมดมาใส่ dropdown (เลือกค่า selected ถ้าส่งมา เช่นตอนแก้ไขสินค้าเดิม)
+  function populateBrandOptions(selected) {
+    const select = document.getElementById('npBrand');
+    const brands = Array.from(new Set(DB.getProducts().map(p => p.brand).filter(Boolean))).sort();
+    if (selected && !brands.includes(selected)) brands.push(selected);
+    select.innerHTML = brands.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+    if (selected) select.value = selected;
   }
 
   // ================= Dashboard =================
@@ -184,6 +194,24 @@
     document.getElementById('btnSaveProduct').addEventListener('click', saveNewProduct);
     document.getElementById('btnCancelEdit').addEventListener('click', resetProductForm);
     document.getElementById('btnAiReadImage').addEventListener('click', runAiReadFromImage);
+    document.getElementById('btnLabelItems').addEventListener('click', runLabelItemsInImage);
+
+    const brandNewInput = document.getElementById('npBrandNew');
+    document.getElementById('btnAddBrand').addEventListener('click', () => {
+      if (brandNewInput.classList.contains('hidden')) {
+        brandNewInput.classList.remove('hidden');
+        brandNewInput.focus();
+        return;
+      }
+      const name = brandNewInput.value.trim();
+      if (!name) { brandNewInput.classList.add('hidden'); return; }
+      populateBrandOptions(name);
+      brandNewInput.value = '';
+      brandNewInput.classList.add('hidden');
+    });
+    brandNewInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btnAddBrand').click(); }
+    });
 
     document.getElementById('btnCropCancel').addEventListener('click', () => {
       document.getElementById('mainImageCropModal').classList.remove('show');
@@ -673,8 +701,9 @@
   function resetProductForm() {
     editingProductId = null;
     editingCreatedAt = null;
-    ['npCode', 'npName', 'npBrand', 'npPrice'].forEach(id => document.getElementById(id).value = '');
+    ['npCode', 'npName', 'npPrice'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('npCode').placeholder = DB.generateNextCode();
+    populateBrandOptions();
     document.getElementById('npCategory').value = 'sunglasses';
     renderSizeFields('sunglasses');
     pendingVariants = [];
@@ -699,7 +728,7 @@
 
     document.getElementById('npCode').value = p.code;
     document.getElementById('npName').value = p.name;
-    document.getElementById('npBrand').value = p.brand;
+    populateBrandOptions(p.brand);
     document.getElementById('npCategory').value = p.category;
     document.getElementById('npPrice').value = p.price;
     renderSizeFields(p.category);
@@ -758,7 +787,7 @@
     status.style.color = '';
     status.textContent = 'AI กำลังอ่านข้อมูลจากภาพ...';
 
-    const prompt = 'This photo shows one or more eyewear items (glasses/sunglasses), possibly with a product tag/label, and possibly with frame size markings printed on the inside of a temple arm (standard format like "52\u25a118-140" or "52-18-140", where the first number is lens width in mm, the middle number is bridge width in mm, and the last number is temple/arm length in mm). Respond with ONLY one JSON object, no markdown fences, no other text: {"productCode":string_or_null,"lensWidthMm":number_or_null,"bridgeWidthMm":number_or_null,"templeLengthMm":number_or_null,"colors":[string,...]}. productCode is any visible model/style code printed on a tag, label, or the frame itself (null if none is clearly visible). lensWidthMm, bridgeWidthMm and templeLengthMm must come only from a clearly visible, legible printed size marking (null if none visible or not legible \u2014 never guess a number). colors is a list of short Thai color names, one per distinct item/color visible in the photo (e.g. if there are 4 items of 4 different colors, list 4 color names); if you cannot tell colors apart or there is only one item, return a single-element array with your best guess.';
+    const prompt = 'This photo shows one or more eyewear items (glasses/sunglasses), possibly with a product tag/label, and possibly with frame size markings printed on the inside of a temple arm (standard format like "52\u25a118-140" or "52-18-140", where the first number is lens width in mm, the middle number is bridge width in mm, and the last number is temple/arm length in mm). Respond with ONLY one JSON object, no markdown fences, no other text: {"productCode":string_or_null,"lensWidthMm":number_or_null,"bridgeWidthMm":number_or_null,"templeLengthMm":number_or_null,"colors":[string,...],"frameShape":string_or_null}. productCode is any visible model/style code printed on a tag, label, or the frame itself (null if none is clearly visible). lensWidthMm, bridgeWidthMm and templeLengthMm must come only from a clearly visible, legible printed size marking (null if none visible or not legible \u2014 never guess a number). colors is a list of short Thai color names, one per distinct item/color visible in the photo (e.g. if there are 4 items of 4 different colors, list 4 color names); if you cannot tell colors apart or there is only one item, return a single-element array with your best guess. frameShape is the overall frame shape, and must be exactly one of these Thai words (pick the closest match): "\u0e40\u0e2b\u0e25\u0e35\u0e48\u0e22\u0e21","\u0e01\u0e25\u0e21","\u0e2b\u0e22\u0e14\u0e19\u0e49\u0e33","\u0e23\u0e35","\u0e41\u0e21\u0e27\u0e21\u0e2d\u0e07","\u0e2a\u0e35\u0e48\u0e40\u0e2b\u0e25\u0e35\u0e48\u0e22\u0e21\u0e1c\u0e37\u0e19\u0e1c\u0e49\u0e32" \u2014 or null if the shape is not clearly visible or the photo shows an accessory rather than eyewear (never guess).';
 
     let result;
     try {
@@ -781,6 +810,20 @@
 
     const filled = [];
     if (result.productCode) { document.getElementById('npCode').value = result.productCode; filled.push('รหัสสินค้า'); }
+
+    const nameEl = document.getElementById('npName');
+    const category = document.getElementById('npCategory');
+    if (nameEl && !nameEl.value.trim() && category.value !== 'accessories') {
+      const typeLabel = (category.selectedOptions[0].text || '').split('/')[0].trim();
+      const nameParts = [typeLabel];
+      if (result.frameShape) nameParts.push('ทรง' + result.frameShape);
+      if (result.productCode) nameParts.push('รุ่น ' + result.productCode);
+      if (result.frameShape || result.productCode) {
+        nameEl.value = nameParts.join(' ');
+        filled.push('ชื่อสินค้า');
+      }
+    }
+
     const lwEl = document.getElementById('npLensWidth');
     if (result.lensWidthMm && lwEl) { lwEl.value = result.lensWidthMm; filled.push('เลนส์กว้าง'); }
     const bwEl = document.getElementById('npBridgeWidth');
@@ -803,6 +846,39 @@
     if (filled.length) parts.push(`เติมข้อมูล: ${filled.join(', ')}`);
     if (colorsAdded) parts.push(`เพิ่มตัวเลือกสี ${colorsAdded} สี (ยังไม่มีรูป — อัปโหลดรูปเพิ่มเองได้ด้านล่าง)`);
     status.textContent = parts.length ? parts.join(' · ') : 'AI ไม่พบข้อมูลที่อ่านได้ชัดเจนจากภาพนี้ — กรอกเองได้เลย';
+  }
+
+  // วาดเลขกำกับ C1/C2/C3 ลงบนรูปสุดท้ายที่อัปโหลด ด้วย local algorithm เดียวกับที่ใช้แยกสีอัตโนมัติ (ไม่เรียก AI/Claude)
+  function runLabelItemsInImage() {
+    const status = document.getElementById('labelItemsStatus');
+    if (!pendingMainImages.length) {
+      status.style.color = '';
+      status.textContent = 'กรุณาอัปโหลดภาพหลักของสินค้าก่อน';
+      return;
+    }
+    if (pendingMainImages.length >= MAX_MAIN_IMAGES) {
+      status.style.color = 'var(--danger)';
+      status.textContent = `เพิ่มภาพหลักได้สูงสุด ${MAX_MAIN_IMAGES} รูปแล้ว ลบรูปเก่าก่อนถ้าต้องการรูปที่ใส่เลขกำกับ`;
+      return;
+    }
+    const original = pendingMainImages[pendingMainImages.length - 1].original;
+    status.style.color = '';
+    status.textContent = 'กำลังตรวจจับตำแหน่งสินค้าในรูป...';
+
+    const img = new Image();
+    img.onload = () => {
+      const labeled = ColorDetect.labelItemsInImage(img, original);
+      if (!labeled) {
+        status.style.color = 'var(--danger)';
+        status.textContent = 'ตรวจแยกชิ้นในรูปนี้ไม่ได้ — ใช้ได้กับรูปพื้นหลังเรียบที่วางสินค้าแยกกันชัดเจนเท่านั้น';
+        return;
+      }
+      pendingMainImages.push({ original: labeled, cropped: labeled });
+      renderMainImagesPreview();
+      status.style.color = '';
+      status.textContent = 'ใส่เลขกำกับเรียบร้อย เพิ่มเป็นรูปใหม่แล้ว (ลบทิ้งได้ถ้าไม่ชอบผล)';
+    };
+    img.src = original;
   }
 
   // ================= Stock management =================

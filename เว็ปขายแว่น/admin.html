@@ -62,7 +62,13 @@
         <div class="form-grid">
           <div class="field"><label>รหัสสินค้า</label><input type="text" id="npCode" placeholder="สร้างอัตโนมัติถ้าเว้นว่าง"></div>
           <div class="field"><label>ชื่อสินค้า *</label><input type="text" id="npName"></div>
-          <div class="field"><label>แบรนด์ *</label><input type="text" id="npBrand"></div>
+          <div class="field"><label>แบรนด์ *</label>
+            <select id="npBrand"></select>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <input type="text" id="npBrandNew" placeholder="ชื่อแบรนด์ใหม่" class="hidden" style="flex:1">
+              <button class="btn btn-sm" id="btnAddBrand" type="button">+ เพิ่มแบรนด์ใหม่</button>
+            </div>
+          </div>
           <div class="field"><label>หมวดหมู่ *</label>
             <select id="npCategory">
               <option value="sunglasses">แว่นกันแดด/แว่นแฟชั่น</option>
@@ -97,6 +103,11 @@
           <button class="btn" id="btnAiReadImage" type="button">✨ ให้ AI อ่านข้อมูลจากภาพ</button>
           <span class="tag-muted" style="margin-left:8px">อ่านรหัสสินค้า/ขนาดจากป้ายหรือขนาดที่พิมพ์บนขาแว่น และเดาชื่อสีที่เห็นในรูปเติมลงตัวเลือกให้ (ยังไม่มีรูป — อัปโหลดรูปเองต่อได้ทีหลัง ต้องอัปโหลดภาพหลักก่อน)</span>
           <div class="error-text" id="aiReadStatus"></div>
+        </div>
+        <div style="margin-top:10px">
+          <button class="btn" id="btnLabelItems" type="button">🏷️ ใส่เลข C1/C2/C3 กำกับในรูป</button>
+          <span class="tag-muted" style="margin-left:8px">ตรวจจับแต่ละชิ้นในรูปแล้ววาดเลขกำกับไว้ข้างๆ (ใช้ได้กับรูปพื้นหลังเรียบ วางแยกกันชัดเจนเท่านั้น) — เพิ่มเป็นรูปใหม่อีกใบ ไม่แก้รูปเดิม กดลบได้ถ้าไม่ชอบผล</span>
+          <div class="error-text" id="labelItemsStatus"></div>
         </div>
 
         <div class="field" style="margin-top:22px">

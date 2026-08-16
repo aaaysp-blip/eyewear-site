@@ -249,14 +249,32 @@
     const p = DB.getProduct(id);
     if (!p) return;
     const firstAvailable = p.variants.find(v => v.stock > 0) || p.variants[0];
-    popupState = { product: p, variant: firstAvailable, qty: firstAvailable && firstAvailable.stock > 0 ? 1 : 0 };
+    popupState = { product: p, variant: firstAvailable, qty: firstAvailable && firstAvailable.stock > 0 ? 1 : 0, imageIndex: 0 };
     renderProductPopup();
     productModal.classList.add('show');
   }
 
+  // รูปของสีที่เลือกอยู่ (ถ้ามี) ตามด้วยรูปหลักของสินค้าทุกรูป (ไม่เอาซ้ำ) — ให้ลูกค้าเลื่อนดูได้ครบ
+  function popupGalleryImages(p, v) {
+    const mainImages = (p.images && p.images.length ? p.images : p.imagesOriginal) || [];
+    const list = [];
+    if (v && v.images[0]) list.push(v.images[0]);
+    mainImages.forEach(src => { if (!list.includes(src)) list.push(src); });
+    return list;
+  }
+
   function renderProductPopup() {
     const { product: p, variant: v, qty } = popupState;
-    const img = (v && v.images[0]) || (p.imagesOriginal && p.imagesOriginal[0]) || (p.images && p.images[0]) || DB.placeholderImage(p.name, '', p.category);
+    const gallery = popupGalleryImages(p, v);
+    const imageIndex = Math.min(popupState.imageIndex || 0, Math.max(0, gallery.length - 1));
+    popupState.imageIndex = imageIndex;
+    const img = gallery[imageIndex] || DB.placeholderImage(p.name, '', p.category);
+    const galleryNav = gallery.length > 1 ? `
+      <button class="popup-gallery-arrow prev" id="popupGalleryPrev" type="button" aria-label="รูปก่อนหน้า">‹</button>
+      <button class="popup-gallery-arrow next" id="popupGalleryNext" type="button" aria-label="รูปถัดไป">›</button>
+      <div class="popup-gallery-dots">
+        ${gallery.map((_, i) => `<button class="popup-gallery-dot ${i === imageIndex ? 'active' : ''}" data-img-idx="${i}" type="button" aria-label="รูปที่ ${i + 1}"></button>`).join('')}
+      </div>` : '';
     const swatches = p.variants.map(vr => `
       <button class="swatch ${vr.id === v.id ? 'active' : ''} ${vr.stock === 0 ? 'disabled' : ''}" data-vid="${vr.id}" ${vr.stock === 0 ? 'disabled' : ''}>
         ${escapeHtml(vr.color)}${vr.stock === 0 ? ' (หมด)' : ''}
@@ -275,7 +293,7 @@
     }
 
     document.getElementById('productPopupBody').innerHTML = `
-      <div class="popup-media"><img src="${img}" alt="" id="popupMediaImg"><span class="popup-zoom-hint">🔍 แตะเพื่อซูม</span></div>
+      <div class="popup-media"><img src="${img}" alt="" id="popupMediaImg"><span class="popup-zoom-hint">🔍 แตะเพื่อซูม</span>${galleryNav}</div>
       <div class="popup-info">
         <div class="popup-code">${p.code}</div>
         <div class="popup-name">${escapeHtml(p.name)}</div>
@@ -309,10 +327,28 @@
           const vr = p.variants.find(x => x.id === btn.dataset.vid);
           popupState.variant = vr;
           popupState.qty = vr.stock > 0 ? 1 : 0;
+          popupState.imageIndex = 0; // สลับสีแล้วกลับไปโชว์รูปแรกของสีนั้นก่อน
           renderProductPopup();
         });
       });
     }
+
+    const prevBtn = document.getElementById('popupGalleryPrev');
+    if (prevBtn) prevBtn.addEventListener('click', () => {
+      popupState.imageIndex = (imageIndex - 1 + gallery.length) % gallery.length;
+      renderProductPopup();
+    });
+    const nextBtn = document.getElementById('popupGalleryNext');
+    if (nextBtn) nextBtn.addEventListener('click', () => {
+      popupState.imageIndex = (imageIndex + 1) % gallery.length;
+      renderProductPopup();
+    });
+    document.querySelectorAll('.popup-gallery-dot').forEach(dot => {
+      dot.addEventListener('click', () => {
+        popupState.imageIndex = Number(dot.dataset.imgIdx);
+        renderProductPopup();
+      });
+    });
 
     document.getElementById('qtyMinus').addEventListener('click', () => changeQty(-1));
     document.getElementById('qtyPlus').addEventListener('click', () => changeQty(1));

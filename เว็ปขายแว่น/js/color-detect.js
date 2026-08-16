@@ -181,14 +181,14 @@
   /**
    * @param {HTMLImageElement} imgEl - รูปที่โหลดเสร็จแล้ว
    * @param {string} originalDataUrl - data URL ของไฟล์ต้นฉบับ (ใช้ตอนไม่ต้องครอป เพื่อคงคุณภาพ/ไฟล์เดิมไว้)
-   * @returns {{dataUrl:string, name:string, hex:string}[]} รายการสีที่ตรวจพบ (อย่างน้อย 1 รายการเสมอ)
+   * @returns {{dataUrl:string, name:string, hex:string, box:{x:number,y:number,width:number,height:number}|null}[]} รายการสีที่ตรวจพบ (อย่างน้อย 1 รายการเสมอ) — box เป็นสัดส่วน 0-1 ของขนาดรูป (null ถ้าตรวจแยกไม่ได้เลยและคืนรูปเต็มมาทั้งใบ)
    */
   function splitVariantsFromImage(imgEl, originalDataUrl) {
     const naturalW = imgEl.naturalWidth || imgEl.width;
     const naturalH = imgEl.naturalHeight || imgEl.height;
     const wholeImageResult = () => {
       const guess = detectDominantColor(imgEl);
-      return [{ dataUrl: originalDataUrl, name: guess.name, hex: guess.hex }];
+      return [{ dataUrl: originalDataUrl, name: guess.name, hex: guess.hex, box: null }];
     };
     if (!naturalW || !naturalH) return wholeImageResult();
 
@@ -223,8 +223,48 @@
       cropCanvas.width = sw; cropCanvas.height = sh;
       cropCanvas.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
       const guess = detectDominantColor(cropCanvas);
-      return { dataUrl: cropCanvas.toDataURL('image/png'), name: guess.name, hex: guess.hex };
+      const box = { x: c.minX / w, y: c.minY / h, width: bw / w, height: bh / h };
+      return { dataUrl: cropCanvas.toDataURL('image/png'), name: guess.name, hex: guess.hex, box };
     });
+  }
+
+  /**
+   * วาดเลขกำกับ C1, C2, C3, ... ไว้ที่มุมบนซ้ายของแต่ละชิ้นที่ตรวจพบในรูป (เรียงซ้าย→ขวา)
+   * ใช้ตำแหน่งจาก splitVariantsFromImage ตัวเดียวกับที่ใช้แยกสีอัตโนมัติ ไม่เรียก AI ภายนอกเลย
+   * @param {HTMLImageElement} imgEl
+   * @param {string} originalDataUrl
+   * @returns {string|null} dataUrl ของรูปที่ใส่เลขกำกับแล้ว หรือ null ถ้าตรวจแยกชิ้นในรูปไม่ได้ (มีแค่ 1 ชิ้น/ตรวจไม่ออก)
+   */
+  function labelItemsInImage(imgEl, originalDataUrl) {
+    const items = splitVariantsFromImage(imgEl, originalDataUrl);
+    if (items.length <= 1) return null;
+
+    const naturalW = imgEl.naturalWidth || imgEl.width;
+    const naturalH = imgEl.naturalHeight || imgEl.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = naturalW;
+    canvas.height = naturalH;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(imgEl, 0, 0, naturalW, naturalH);
+
+    const fontSize = Math.max(20, Math.round(Math.min(naturalW, naturalH) * 0.05));
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textBaseline = 'top';
+
+    items.forEach((it, i) => {
+      const label = 'C' + (i + 1);
+      const x = it.box.x * naturalW + 4;
+      const y = it.box.y * naturalH + 4;
+      const padding = Math.round(fontSize * 0.25);
+      const textW = ctx.measureText(label).width;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(x - padding, y - padding, textW + padding * 2, fontSize + padding * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, x, y);
+    });
+
+    return canvas.toDataURL('image/jpeg', 0.92);
   }
 
   function loadImageFromFile(file) {
@@ -241,5 +281,5 @@
     });
   }
 
-  global.ColorDetect = { detectDominantColor, nearestColorName, loadImageFromFile, splitVariantsFromImage, NAMED_COLORS };
+  global.ColorDetect = { detectDominantColor, nearestColorName, loadImageFromFile, splitVariantsFromImage, labelItemsInImage, NAMED_COLORS };
 })(window);

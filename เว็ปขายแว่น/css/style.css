@@ -219,6 +219,21 @@ button{ font-family: inherit; }
   position:absolute; bottom:10px; right:10px; background:rgba(20,18,14,0.6); color:#fff;
   font-size:11px; padding:4px 9px; border-radius:20px; pointer-events:none;
 }
+.popup-gallery-arrow{
+  position:absolute; top:50%; transform:translateY(-50%); width:34px; height:34px; border-radius:50%;
+  border:none; background:rgba(20,18,14,0.5); color:#fff; font-size:18px; line-height:1; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; z-index:1;
+}
+.popup-gallery-arrow:hover{ background:rgba(20,18,14,0.75); }
+.popup-gallery-arrow.prev{ left:10px; }
+.popup-gallery-arrow.next{ right:10px; }
+.popup-gallery-dots{
+  position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:1;
+}
+.popup-gallery-dot{
+  width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.5); border:none; padding:0; cursor:pointer;
+}
+.popup-gallery-dot.active{ background:#fff; }
 
 .zoom-panel{
   position:relative; background:var(--surface); border-radius: var(--radius-lg);
