@@ -641,13 +641,43 @@
   const preorderModal = document.getElementById('preorderModal');
   const btnOpenPreorder = document.getElementById('btnOpenPreorder');
   function updatePreorderButtonLabel() {
-    btnOpenPreorder.textContent = isPreorderUnlocked() ? '🔓 Pre-order (เปิดใช้งานอยู่)' : '🔓 มีรหัส Pre-order?';
+    const unlocked = isPreorderUnlocked();
+    btnOpenPreorder.textContent = unlocked ? '🔓 Pre-order (เปิดใช้งานอยู่)' : '🔓 มีรหัส Pre-order?';
+    btnOpenPreorder.title = unlocked ? 'กดเพื่อออกจากโหมด Pre-order' : '';
   }
   updatePreorderButtonLabel();
 
+  // ปรับตะกร้าให้ตรงกับสต็อกจริงหลังออกจากโหมด Pre-order (กันเหลือรายการที่สั่งเกินสต็อกค้างเป็นออเดอร์ปกติแบบไม่ตั้งใจ)
+  function reconcileCartAfterPreorderExit() {
+    const cart = getCart();
+    const products = DB.getProducts();
+    let changed = false;
+    const reconciled = cart.filter(item => {
+      const p = products.find(x => x.id === item.productId);
+      const v = p && p.variants.find(x => x.id === item.variantId);
+      const maxQty = v ? v.stock : 0;
+      if (maxQty <= 0) { changed = true; return false; }
+      if (item.qty > maxQty) { item.qty = maxQty; changed = true; }
+      return true;
+    });
+    setCart(reconciled);
+    return changed;
+  }
+
   btnOpenPreorder.addEventListener('click', e => {
     e.preventDefault();
-    if (isPreorderUnlocked()) return; // ปลดล็อกอยู่แล้ว ไม่ต้องกรอกซ้ำ
+    if (isPreorderUnlocked()) {
+      if (!confirm('ออกจากโหมด Pre-order? ถ้ามีสินค้าที่สต็อกไม่พอ/หมดอยู่ในตะกร้า ระบบจะปรับจำนวนหรือนำออกให้อัตโนมัติ')) return;
+      sessionStorage.removeItem(PREORDER_KEY);
+      const cartChanged = reconcileCartAfterPreorderExit();
+      updatePreorderButtonLabel();
+      renderCartCount();
+      showToast(cartChanged ? 'ออกจากโหมด Pre-order แล้ว — ปรับตะกร้าให้ตรงกับสต็อกจริงแล้ว' : 'ออกจากโหมด Pre-order แล้ว');
+      renderGrid();
+      if (productModal.classList.contains('show')) renderProductPopup();
+      if (cartModal.classList.contains('show')) renderCheckout();
+      return;
+    }
     document.getElementById('preorderCodeInput').value = '';
     document.getElementById('preorderMsg').textContent = '';
     preorderModal.classList.add('show');
