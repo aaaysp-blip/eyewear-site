@@ -141,6 +141,7 @@
       trackingNo: row.tracking_no || null,
       courier: row.courier || null,
       codDeliveryStatus: row.cod_delivery_status || null,
+      isPreorder: !!row.is_preorder,
       customer: cust,
       items: (row.items || []).map(mapOrderItem),
       createdAt: row.created_at,
@@ -260,6 +261,12 @@
     if (v) v.stock = stock;
   }
 
+  // เปลี่ยนชื่อแบรนด์แบบ retroactive — มีผลกับทุกสินค้าที่ใช้แบรนด์เดิมอยู่
+  async function renameBrand(oldName, newName) {
+    await apiFetch('/api/products', { method: 'PATCH', body: JSON.stringify({ renameBrand: { from: oldName, to: newName } }) });
+    cache.products.forEach((p) => { if (p.brand === oldName) p.brand = newName; });
+  }
+
   // ---------- Orders ----------
   const STATUS = {
     1: 'รอตรวจสลิป',
@@ -283,10 +290,11 @@
     return cache.orders.filter((o) => o.customer.phone === p);
   }
 
-  async function createOrder({ items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer, paymentMethod, promoCode, paymentSlip }) {
+  async function createOrder({ items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer, paymentMethod, promoCode, paymentSlip, isPreorder }) {
     const body = {
       items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer,
       paymentMethod: paymentMethod || 'promptpay', promoCode: promoCode || null, paymentSlip: paymentSlip || null,
+      isPreorder: !!isPreorder,
     };
     const resp = await apiFetch('/api/orders', { method: 'POST', body: JSON.stringify(body) });
 
@@ -306,6 +314,7 @@
       trackingNo: null,
       courier: null,
       codDeliveryStatus: null,
+      isPreorder: !!resp.is_preorder,
       customer,
       items: resp.items || items,
       createdAt: resp.created_at,
@@ -314,12 +323,14 @@
     cache.orders.unshift(order);
     upsertCachedCustomer(customer);
 
-    // ลดสต็อกใน cache ให้ตรงกับที่ /api/orders ลดให้จริงแล้วฝั่งเซิร์ฟเวอร์
-    items.forEach((item) => {
-      const p = cache.products.find((x) => x.id === item.productId);
-      const v = p && p.variants.find((x) => x.id === item.variantId);
-      if (v) v.stock = Math.max(0, v.stock - item.qty);
-    });
+    // ลดสต็อกใน cache ให้ตรงกับที่ /api/orders ลดให้จริงแล้วฝั่งเซิร์ฟเวอร์ (ข้ามถ้าเป็น pre-order เพราะเซิร์ฟเวอร์ก็ไม่ได้ตัดสต็อกจริงเช่นกัน)
+    if (!isPreorder) {
+      items.forEach((item) => {
+        const p = cache.products.find((x) => x.id === item.productId);
+        const v = p && p.variants.find((x) => x.id === item.variantId);
+        if (v) v.stock = Math.max(0, v.stock - item.qty);
+      });
+    }
 
     if (promoCode) await redeemPromotion(promoCode);
     return order;
@@ -472,6 +483,11 @@
     return !!resp.ok;
   }
 
+  async function verifyPreorderCode(code) {
+    const resp = await apiFetch('/api/config', { method: 'POST', body: JSON.stringify({ verifyPreorderCode: code }) });
+    return !!resp.ok;
+  }
+
   // ---------- Dashboard helpers ----------
   function monthSales() {
     const now = new Date();
@@ -590,11 +606,11 @@
     init,
     placeholderImage,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
-    generateNextCode, updateVariantStock, isNew,
+    generateNextCode, updateVariantStock, isNew, renameBrand,
     STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, getOrdersForPhone, markCodDelivered, markCodReturned,
     getRestocks, getRestock, createRestock, updateRestockReceivedQty, confirmRestockReceive, pendingRestockCount,
     getCustomers, getCustomerByPhone, getCustomerStats,
-    getConfig, setConfig, verifyAdminPassword,
+    getConfig, setConfig, verifyAdminPassword, verifyPreorderCode,
     monthSales, pendingOrderCount, bestSellers, lowStockVariants,
     calcCartWeightGrams, calcShippingFee, isCodAvailable, unitWeightForProduct, UNIT_WEIGHT_EYEWEAR_G, UNIT_WEIGHT_ACCESSORY_G, COD_MAX_KG, COD_FEE,
     calcSmallOrderFee, SMALL_ORDER_MIN_QTY, SMALL_ORDER_FEE,

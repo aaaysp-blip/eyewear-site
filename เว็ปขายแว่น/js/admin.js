@@ -213,6 +213,29 @@
       if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btnAddBrand').click(); }
     });
 
+    const brandRenameInput = document.getElementById('npBrandRename');
+    document.getElementById('btnEditBrand').addEventListener('click', async () => {
+      const brandSelect = document.getElementById('npBrand');
+      const oldName = brandSelect.value;
+      if (!oldName) return;
+      if (brandRenameInput.classList.contains('hidden')) {
+        brandRenameInput.value = oldName;
+        brandRenameInput.classList.remove('hidden');
+        brandRenameInput.focus();
+        brandRenameInput.select();
+        return;
+      }
+      const newName = brandRenameInput.value.trim();
+      brandRenameInput.classList.add('hidden');
+      if (!newName || newName === oldName) return;
+      await DB.renameBrand(oldName, newName);
+      populateBrandOptions(newName);
+      showToast(`แก้ไขชื่อแบรนด์ "${oldName}" เป็น "${newName}" เรียบร้อย (มีผลกับทุกสินค้าที่ใช้แบรนด์นี้)`);
+    });
+    brandRenameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('btnEditBrand').click(); }
+    });
+
     document.getElementById('btnCropCancel').addEventListener('click', () => {
       document.getElementById('mainImageCropModal').classList.remove('show');
       cropCtx = null;
@@ -1394,6 +1417,7 @@
         <div class="order-card-head" data-toggle="${o.id}">
           <div><strong>${o.orderNo}</strong> <span class="tag-muted">${new Date(o.createdAt).toLocaleString('th-TH')}</span></div>
           <div>${escapeHtml(o.customer.name)} · ฿${o.total.toLocaleString()}</div>
+          ${o.isPreorder ? `<span class="status-pill" style="background:#eaf1fb;color:#2f5faa">🔓 Pre-order</span>` : ''}
           <span class="status-pill status-${o.status}">${DB.STATUS[o.status]}</span>
         </div>
         <div class="order-card-body" id="body-${o.id}">
@@ -1676,10 +1700,13 @@
       const shopPhone = document.getElementById('stShopPhone').value.trim();
       const shopAddress = document.getElementById('stShopAddress').value.trim();
       const newPassword = document.getElementById('stPassword').value.trim();
+      const newPreorderCode = document.getElementById('stPreorderCode').value.trim();
       const patch = { promptpayId, lowStockThreshold, shopPhone, shopAddress };
       if (newPassword) patch.adminPassword = newPassword;
+      if (newPreorderCode) patch.preorderCode = newPreorderCode;
       await DB.setConfig(patch);
       document.getElementById('stPassword').value = '';
+      document.getElementById('stPreorderCode').value = '';
       document.getElementById('settingsMsg').style.color = 'var(--success)';
       document.getElementById('settingsMsg').textContent = 'บันทึกการตั้งค่าเรียบร้อย';
       setTimeout(() => document.getElementById('settingsMsg').textContent = '', 2500);

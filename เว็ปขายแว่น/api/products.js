@@ -2,6 +2,7 @@
 // GET    /api/products             -> รายการสินค้าทั้งหมด (พร้อม variants)
 // POST   /api/products             -> เพิ่ม/แก้ไขสินค้า (ส่ง id มาด้วย = แก้ไข, ไม่ส่ง = เพิ่มใหม่)
 // PATCH  /api/products             -> แก้สต็อกของตัวเลือกสีเดียวแบบเร็ว { variantId, stock }
+//                                   -> หรือเปลี่ยนชื่อแบรนด์ทุกสินค้าที่ใช้อยู่ { renameBrand: { from, to } }
 // DELETE /api/products?id=xxx      -> ลบสินค้า
 
 import { getSupabase } from './_lib/supabase.js';
@@ -95,7 +96,20 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PATCH') {
-      const { variantId, stock } = req.body || {};
+      const { variantId, stock, renameBrand } = req.body || {};
+
+      if (renameBrand) {
+        const { from, to } = renameBrand;
+        if (!from || !to) {
+          res.status(400).json({ error: 'renameBrand.from and renameBrand.to are required' });
+          return;
+        }
+        const { error } = await supabase.from('products').update({ brand: to }).eq('brand', from);
+        if (error) throw error;
+        res.status(200).json({ ok: true });
+        return;
+      }
+
       if (!variantId || stock == null) {
         res.status(400).json({ error: 'variantId and stock are required' });
         return;

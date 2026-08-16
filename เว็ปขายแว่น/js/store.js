@@ -105,7 +105,8 @@
     const img = (p.images && p.images[0]) || (p.variants[0] && p.variants[0].images[0]) || DB.placeholderImage(p.name, '', p.category);
     const isNew = DB.isNew(p);
     let badge = '';
-    if (stock === 0) badge = `<span class="card-badge out">หมดสต็อก</span>`;
+    if (stock === 0 && isPreorderUnlocked()) badge = `<span class="card-badge preorder">พรีออเดอร์ได้</span>`;
+    else if (stock === 0) badge = `<span class="card-badge out">หมดสต็อก</span>`;
     else if (isNew) badge = `<span class="card-badge new">ใหม่</span>`;
     const sizeParts = [];
     if (p.category === 'accessories') {
@@ -128,7 +129,7 @@
         ${sizeParts.length ? `<div class="card-size">${sizeParts.join(' · ')}</div>` : ''}
         <div class="card-footer">
           <div class="card-price">฿${p.price.toLocaleString()}</div>
-          <div class="card-stock ${stock === 0 ? 'out' : stock <= 2 ? 'low' : ''}">${stock === 0 ? 'หมด' : 'คงเหลือ ' + stock}</div>
+          <div class="card-stock ${stock === 0 ? 'out' : stock <= 2 ? 'low' : ''}">${stock === 0 ? (isPreorderUnlocked() ? 'พรีออเดอร์ได้' : 'หมด') : 'คงเหลือ ' + stock}</div>
         </div>
       </div>
     </div>`;
@@ -249,7 +250,7 @@
     const p = DB.getProduct(id);
     if (!p) return;
     const firstAvailable = p.variants.find(v => v.stock > 0) || p.variants[0];
-    popupState = { product: p, variant: firstAvailable, qty: firstAvailable && firstAvailable.stock > 0 ? 1 : 0, imageIndex: 0 };
+    popupState = { product: p, variant: firstAvailable, qty: firstAvailable && (firstAvailable.stock > 0 || isPreorderUnlocked()) ? 1 : 0, imageIndex: 0 };
     renderProductPopup();
     productModal.classList.add('show');
   }
@@ -275,10 +276,12 @@
       <div class="popup-gallery-dots">
         ${gallery.map((_, i) => `<button class="popup-gallery-dot ${i === imageIndex ? 'active' : ''}" data-img-idx="${i}" type="button" aria-label="รูปที่ ${i + 1}"></button>`).join('')}
       </div>` : '';
+    const preorderMode = isPreorderUnlocked();
     const swatches = p.variants.map(vr => `
-      <button class="swatch ${vr.id === v.id ? 'active' : ''} ${vr.stock === 0 ? 'disabled' : ''}" data-vid="${vr.id}" ${vr.stock === 0 ? 'disabled' : ''}>
-        ${escapeHtml(vr.color)}${vr.stock === 0 ? ' (หมด)' : ''}
+      <button class="swatch ${vr.id === v.id ? 'active' : ''} ${vr.stock === 0 && !preorderMode ? 'disabled' : ''}" data-vid="${vr.id}" ${vr.stock === 0 && !preorderMode ? 'disabled' : ''}>
+        ${escapeHtml(vr.color)}${vr.stock === 0 ? (preorderMode ? ' (พรีออเดอร์)' : ' (หมด)') : ''}
       </button>`).join('');
+    const maxQty = v ? (preorderMode ? 99 : v.stock) : 0;
 
     const specParts = [];
     if (p.category === 'accessories') {
@@ -300,12 +303,13 @@
         <div class="popup-brand">${escapeHtml(p.brand)}</div>
         ${specParts.length ? `<div class="spec-grid">${specParts.join('')}</div>` : ''}
         ${p.variants.length > 1 ? `<div class="field"><label>เลือกสี</label><div class="swatches" id="popupSwatches">${swatches}</div></div>` : ''}
+        ${preorderMode && v && v.stock === 0 ? `<div class="tag-muted" style="color:var(--accent);margin-bottom:6px">🔓 สินค้านี้หมดสต็อก — สั่งเป็นรายการ Pre-order ได้ ทางร้านจะจัดส่งเมื่อของเข้า</div>` : ''}
         <div class="field">
           <label>จำนวน (คงเหลือ ${v ? v.stock : 0} ชิ้น)</label>
           <div class="qty-row">
             <div class="qty-control">
               <button id="qtyMinus" type="button">−</button>
-              <input type="number" id="qtyInput" value="${qty}" min="0" max="${v ? v.stock : 0}">
+              <input type="number" id="qtyInput" value="${qty}" min="0" max="${maxQty}">
               <button id="qtyPlus" type="button">+</button>
             </div>
           </div>
@@ -314,8 +318,8 @@
           <span>ราคารวม</span>
           <span class="amt" id="popupTotal">฿${((v ? p.price * qty : 0)).toLocaleString()}</span>
         </div>
-        <button class="btn btn-primary btn-block" id="btnAddCart" ${!v || v.stock === 0 || qty < 1 ? 'disabled' : ''}>
-          ${!v || v.stock === 0 ? 'หมดสต็อก' : 'ใส่ตะกร้า'}
+        <button class="btn btn-primary btn-block" id="btnAddCart" ${!v || (v.stock === 0 && !preorderMode) || qty < 1 ? 'disabled' : ''}>
+          ${!v || v.stock === 0 ? (preorderMode ? 'สั่งจอง (Pre-order)' : 'หมดสต็อก') : 'ใส่ตะกร้า'}
         </button>
       </div>
     `;
@@ -326,7 +330,7 @@
         btn.addEventListener('click', () => {
           const vr = p.variants.find(x => x.id === btn.dataset.vid);
           popupState.variant = vr;
-          popupState.qty = vr.stock > 0 ? 1 : 0;
+          popupState.qty = (vr.stock > 0 || isPreorderUnlocked()) ? 1 : 0;
           popupState.imageIndex = 0; // สลับสีแล้วกลับไปโชว์รูปแรกของสีนั้นก่อน
           renderProductPopup();
         });
@@ -354,7 +358,7 @@
     document.getElementById('qtyPlus').addEventListener('click', () => changeQty(1));
     document.getElementById('qtyInput').addEventListener('change', e => {
       let val = parseInt(e.target.value, 10) || 0;
-      val = Math.max(0, Math.min(val, v ? v.stock : 0));
+      val = Math.max(0, Math.min(val, maxQty));
       popupState.qty = val;
       renderProductPopup();
     });
@@ -367,7 +371,7 @@
 
   function changeQty(delta) {
     const v = popupState.variant;
-    const max = v ? v.stock : 0;
+    const max = v ? (isPreorderUnlocked() ? 99 : v.stock) : 0;
     popupState.qty = Math.max(1, Math.min(max, popupState.qty + delta));
     renderProductPopup();
   }
@@ -377,7 +381,7 @@
     if (!v || qty < 1) return;
     const cart = getCart();
     const existing = cart.find(it => it.variantId === v.id);
-    const maxAllowed = v.stock;
+    const maxAllowed = isPreorderUnlocked() ? 99 : v.stock;
     if (existing) {
       existing.qty = Math.min(maxAllowed, existing.qty + qty);
     } else {
@@ -388,8 +392,9 @@
       });
     }
     setCart(cart);
-    showToast('เพิ่มลงตะกร้าแล้ว');
-    productModal.classList.remove('show');
+    showToast('เพิ่มลงตะกร้าแล้ว — เลือกสีอื่นเพิ่มได้เลย');
+    popupState.qty = (v.stock > 0 || isPreorderUnlocked()) ? 1 : 0;
+    renderProductPopup();
   }
 
   // ---------------- Image zoom ----------------
@@ -628,6 +633,42 @@
       </div>
     `;
   }
+
+  // ---------------- Pre-order (ปลดล็อกด้วยรหัสจากทางร้าน — สั่งได้แม้สต็อกไม่พอ ไม่ตัดสต็อกจริง) ----------------
+  const PREORDER_KEY = 'ew_preorder_unlocked';
+  function isPreorderUnlocked() { return sessionStorage.getItem(PREORDER_KEY) === '1'; }
+
+  const preorderModal = document.getElementById('preorderModal');
+  const btnOpenPreorder = document.getElementById('btnOpenPreorder');
+  function updatePreorderButtonLabel() {
+    btnOpenPreorder.textContent = isPreorderUnlocked() ? '🔓 Pre-order (เปิดใช้งานอยู่)' : '🔓 มีรหัส Pre-order?';
+  }
+  updatePreorderButtonLabel();
+
+  btnOpenPreorder.addEventListener('click', e => {
+    e.preventDefault();
+    if (isPreorderUnlocked()) return; // ปลดล็อกอยู่แล้ว ไม่ต้องกรอกซ้ำ
+    document.getElementById('preorderCodeInput').value = '';
+    document.getElementById('preorderMsg').textContent = '';
+    preorderModal.classList.add('show');
+  });
+
+  async function runPreorderUnlock() {
+    const code = document.getElementById('preorderCodeInput').value.trim();
+    const msg = document.getElementById('preorderMsg');
+    if (!code) { msg.textContent = 'กรุณากรอกรหัส'; return; }
+    const ok = await DB.verifyPreorderCode(code);
+    if (!ok) { msg.textContent = 'รหัสไม่ถูกต้อง'; return; }
+    sessionStorage.setItem(PREORDER_KEY, '1');
+    msg.textContent = '';
+    preorderModal.classList.remove('show');
+    updatePreorderButtonLabel();
+    showToast('ปลดล็อก Pre-order แล้ว — สั่งสินค้าที่สต็อกไม่พอได้เลย');
+    renderGrid();
+    if (productModal.classList.contains('show')) renderProductPopup();
+  }
+  document.getElementById('btnPreorderUnlock').addEventListener('click', runPreorderUnlock);
+  document.getElementById('preorderCodeInput').addEventListener('keydown', e => { if (e.key === 'Enter') runPreorderUnlock(); });
 
   // ---------------- Modal close (generic) ----------------
   document.querySelectorAll('[data-close-modal]').forEach(el => {
@@ -956,6 +997,7 @@
       paymentMethod: checkoutPaymentMethod,
       promoCode: checkoutPromo ? checkoutPromo.code : null,
       paymentSlip: checkoutSlipDataUrl,
+      isPreorder: isPreorderUnlocked(),
     });
     setCart([]);
     checkoutPromo = null;

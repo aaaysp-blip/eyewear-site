@@ -67,6 +67,10 @@
             <div style="display:flex;gap:6px;margin-top:6px">
               <input type="text" id="npBrandNew" placeholder="ชื่อแบรนด์ใหม่" class="hidden" style="flex:1">
               <button class="btn btn-sm" id="btnAddBrand" type="button">+ เพิ่มแบรนด์ใหม่</button>
+              <button class="btn btn-sm" id="btnEditBrand" type="button">✎ แก้ไขชื่อแบรนด์</button>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <input type="text" id="npBrandRename" placeholder="ชื่อแบรนด์ใหม่ (แทนที่ชื่อเดิมทุกสินค้าที่ใช้อยู่)" class="hidden" style="flex:1">
             </div>
           </div>
           <div class="field"><label>หมวดหมู่ *</label>
@@ -241,6 +245,7 @@
           <div class="field"><label>เบอร์โทรร้าน (แสดงในใบปะหน้า)</label><input type="text" id="stShopPhone" placeholder="เว้นว่างได้ถ้ายังไม่มี"></div>
           <div class="field span2"><label>ที่อยู่ร้าน (ผู้ส่งในใบปะหน้า)</label><input type="text" id="stShopAddress" placeholder="เว้นว่างได้ถ้ายังไม่มี"></div>
           <div class="field"><label>เปลี่ยนรหัสผ่านแอดมิน</label><input type="password" id="stPassword" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></div>
+          <div class="field"><label>รหัส Pre-order (แจกให้ลูกค้าเฉพาะราย)</label><input type="text" id="stPreorderCode" placeholder="เว้นว่างถ้าไม่เปลี่ยน"></div>
         </div>
         <button class="btn btn-primary" style="margin-top:14px" id="btnSaveSettings">บันทึกการตั้งค่า</button>
         <div class="error-text" id="settingsMsg"></div>

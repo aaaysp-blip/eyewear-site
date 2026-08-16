@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       const {
         items = [], total, customer,
         subtotal, shippingFee, smallOrderFee, codFee, discountAmount,
-        paymentMethod, promoCode, paymentSlip,
+        paymentMethod, promoCode, paymentSlip, isPreorder,
       } = req.body || {};
       if (!items.length || !customer?.phone) {
         res.status(400).json({ error: 'items and customer.phone are required' });
@@ -68,6 +68,7 @@ export default async function handler(req, res) {
           payment_method: paymentMethod || 'promptpay',
           promo_code: promoCode || null,
           payment_slip: paymentSlip || null,
+          is_preorder: !!isPreorder,
         })
         .select()
         .single();
@@ -87,16 +88,18 @@ export default async function handler(req, res) {
       const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
       if (itemsErr) throw itemsErr;
 
-      // ลดสต็อกทันทีที่สั่งซื้อ
-      for (const it of items) {
-        const { data: variant } = await supabase
-          .from('product_variants')
-          .select('stock')
-          .eq('id', it.variantId)
-          .single();
-        if (variant) {
-          const newStock = Math.max(0, variant.stock - it.qty);
-          await supabase.from('product_variants').update({ stock: newStock }).eq('id', it.variantId);
+      // ลดสต็อกทันทีที่สั่งซื้อ — ข้ามขั้นตอนนี้ถ้าเป็นออเดอร์ pre-order (สั่งเกินสต็อกที่มีได้ตั้งใจ ไม่ตัดสต็อกจริง)
+      if (!isPreorder) {
+        for (const it of items) {
+          const { data: variant } = await supabase
+            .from('product_variants')
+            .select('stock')
+            .eq('id', it.variantId)
+            .single();
+          if (variant) {
+            const newStock = Math.max(0, variant.stock - it.qty);
+            await supabase.from('product_variants').update({ stock: newStock }).eq('id', it.variantId);
+          }
         }
       }
 

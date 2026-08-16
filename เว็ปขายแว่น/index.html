@@ -22,6 +22,7 @@
       <div class="topbar-actions">
         <button class="btn" id="btnOpenTracking">เช็คสถานะออเดอร์</button>
         <button class="btn" id="btnOpenReview">เขียนรีวิวร้านค้า</button>
+        <button class="btn" id="btnOpenPreorder">🔓 มีรหัส Pre-order?</button>
         <button class="icon-btn" id="btnCart" title="ตะกร้า" aria-label="ตะกร้า">
           🛒<span class="badge-count hidden" id="cartCount">0</span>
         </button>
@@ -180,6 +181,23 @@
       <div class="error-text" id="trackLookupMsg"></div>
       <div id="trackOrderList" style="margin-top:16px"></div>
       <div id="trackResult" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Pre-order code unlock ===== -->
+<div class="modal" id="preorderModal">
+  <div class="modal-backdrop" data-close-modal="preorderModal"></div>
+  <div class="modal-panel narrow">
+    <button class="modal-close" data-close-modal="preorderModal">✕</button>
+    <div style="padding:26px">
+      <h2 style="margin-top:0">ปลดล็อก Pre-order</h2>
+      <p class="tag-muted" style="margin:0 0 14px">กรอกรหัส Pre-order ที่ได้รับจากทางร้าน เพื่อสั่งสินค้าได้แม้สต็อกไม่พอหรือหมด (ทางร้านจะจัดของให้ทีหลัง)</p>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="preorderCodeInput" placeholder="รหัส Pre-order" style="flex:1">
+        <button class="btn btn-primary" id="btnPreorderUnlock" type="button">ยืนยัน</button>
+      </div>
+      <div class="error-text" id="preorderMsg"></div>
     </div>
   </div>
 </div>
