@@ -34,9 +34,11 @@ export default async function handler(req, res) {
         return;
       }
 
+      // ไม่ select images_original เลยตั้งแต่ระดับ query — ไม่ใช่แค่ตัดตอนส่งกลับ browser
+      // (ถ้า select('*') แล้วค่อยตัดทีหลัง Supabase ก็ยังต้องส่งข้อมูลก้อนใหญ่มาที่ function อยู่ดี ไม่ช่วยเรื่องเวลา)
       const { data: products, error: pErr } = await supabase
         .from('products')
-        .select('*')
+        .select('id, code, name, brand, category, price, frame_width, lens_width, lens_height, bridge_width, temple_length, acc_width, acc_length, material, images, created_at')
         .order('created_at', { ascending: false });
       if (pErr) throw pErr;
 
@@ -45,10 +47,10 @@ export default async function handler(req, res) {
         .select('*');
       if (vErr) throw vErr;
 
-      const merged = products.map((p) => {
-        const { images_original, ...rest } = p; // ตัดออกจากรายการ — หนักและใช้แค่ตอนแก้ไขสินค้าเดี่ยวๆ
-        return { ...rest, variants: variants.filter((v) => v.product_id === p.id) };
-      });
+      const merged = products.map((p) => ({
+        ...p,
+        variants: variants.filter((v) => v.product_id === p.id),
+      }));
 
       res.status(200).json(merged);
       return;
