@@ -257,7 +257,7 @@
 
   // รูปของสีที่เลือกอยู่ (ถ้ามี) ตามด้วยรูปหลักของสินค้าทุกรูป (ไม่เอาซ้ำ) — ให้ลูกค้าเลื่อนดูได้ครบ
   function popupGalleryImages(p, v) {
-    const mainImages = (p.images && p.images.length ? p.images : p.imagesOriginal) || [];
+    const mainImages = p.images || [];
     const list = [];
     if (v && v.images[0]) list.push(v.images[0]);
     mainImages.forEach(src => { if (!list.includes(src)) list.push(src); });
@@ -388,7 +388,7 @@
       cart.push({
         productId: p.id, variantId: v.id, code: p.code, name: p.name,
         color: v.color, qty, price: p.price,
-        image: v.images[0] || (p.imagesOriginal && p.imagesOriginal[0]) || (p.images && p.images[0]) || '',
+        image: v.images[0] || (p.images && p.images[0]) || '',
       });
     }
     setCart(cart);
