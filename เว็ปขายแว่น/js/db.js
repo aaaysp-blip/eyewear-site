@@ -261,6 +261,16 @@
     return cache.products.find((p) => p.id === id) || null;
   }
 
+  // ดึงรายละเอียดสินค้าชิ้นเดียวแบบเต็ม (รวม imagesOriginal ที่ /api/products แบบรายการไม่ส่งมาให้ เพราะหนัก)
+  // ใช้ตอนแอดมินเปิดแก้ไขสินค้า เพื่อให้ re-crop จากรูปต้นฉบับได้
+  async function fetchProductDetail(id) {
+    const row = await apiFetch('/api/products?id=' + encodeURIComponent(id));
+    const mapped = mapProduct(row);
+    const idx = cache.products.findIndex((p) => p.id === id);
+    if (idx >= 0) cache.products[idx] = mapped; else cache.products.push(mapped);
+    return mapped;
+  }
+
   async function deleteProduct(id) {
     await apiFetch('/api/products?id=' + encodeURIComponent(id), { method: 'DELETE' });
     cache.products = cache.products.filter((p) => p.id !== id);
@@ -624,7 +634,7 @@
     init, ready,
     placeholderImage,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
-    generateNextCode, updateVariantStock, isNew, renameBrand,
+    generateNextCode, updateVariantStock, isNew, renameBrand, fetchProductDetail,
     STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, getOrdersForPhone, markCodDelivered, markCodReturned,
     getRestocks, getRestock, createRestock, updateRestockReceivedQty, confirmRestockReceive, pendingRestockCount,
     getCustomers, getCustomerByPhone, getCustomerStats,

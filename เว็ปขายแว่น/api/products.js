@@ -1,5 +1,6 @@
 // api/products.js
-// GET    /api/products             -> รายการสินค้าทั้งหมด (พร้อม variants)
+// GET    /api/products             -> รายการสินค้าทั้งหมด (พร้อม variants) — ไม่ส่ง images_original กลับ (หนักและไม่มีใครใช้ตอนแสดงรายการ)
+// GET    /api/products?id=xxx      -> รายละเอียดเต็มของสินค้าชิ้นเดียว รวม images_original (ใช้ตอนแอดมินเปิดแก้ไขเพื่อ re-crop จากต้นฉบับ)
 // POST   /api/products             -> เพิ่ม/แก้ไขสินค้า (ส่ง id มาด้วย = แก้ไข, ไม่ส่ง = เพิ่มใหม่)
 // PATCH  /api/products             -> แก้สต็อกของตัวเลือกสีเดียวแบบเร็ว { variantId, stock }
 //                                   -> หรือเปลี่ยนชื่อแบรนด์ทุกสินค้าที่ใช้อยู่ { renameBrand: { from, to } }
@@ -21,6 +22,18 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
+      const productId = req.query?.id;
+
+      if (productId) {
+        // สินค้าชิ้นเดียวแบบเต็ม รวม images_original — เรียกตอนแอดมินเปิดแก้ไขเท่านั้น
+        const { data: product, error: pErr } = await supabase.from('products').select('*').eq('id', productId).single();
+        if (pErr) throw pErr;
+        const { data: variants, error: vErr } = await supabase.from('product_variants').select('*').eq('product_id', productId);
+        if (vErr) throw vErr;
+        res.status(200).json({ ...product, variants: variants || [] });
+        return;
+      }
+
       const { data: products, error: pErr } = await supabase
         .from('products')
         .select('*')
@@ -32,10 +45,10 @@ export default async function handler(req, res) {
         .select('*');
       if (vErr) throw vErr;
 
-      const merged = products.map((p) => ({
-        ...p,
-        variants: variants.filter((v) => v.product_id === p.id),
-      }));
+      const merged = products.map((p) => {
+        const { images_original, ...rest } = p; // ตัดออกจากรายการ — หนักและใช้แค่ตอนแก้ไขสินค้าเดี่ยวๆ
+        return { ...rest, variants: variants.filter((v) => v.product_id === p.id) };
+      });
 
       res.status(200).json(merged);
       return;

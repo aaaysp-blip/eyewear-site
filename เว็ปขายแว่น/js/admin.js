@@ -747,9 +747,10 @@
     document.getElementById('btnCancelEdit').classList.add('hidden');
   }
 
-  function editProduct(id) {
-    const p = DB.getProduct(id);
+  async function editProduct(id) {
+    let p = DB.getProduct(id);
     if (!p) return;
+    p = await DB.fetchProductDetail(id); // โหลดรายละเอียดเต็ม (รวมรูปต้นฉบับ) ก่อนเปิดฟอร์มแก้ไข — รายการปกติไม่มีรูปต้นฉบับติดมาด้วย
     editingProductId = p.id;
     editingCreatedAt = p.createdAt;
 
