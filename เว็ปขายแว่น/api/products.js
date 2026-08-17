@@ -36,15 +36,15 @@ export default async function handler(req, res) {
 
       // ไม่ select images_original เลยตั้งแต่ระดับ query — ไม่ใช่แค่ตัดตอนส่งกลับ browser
       // (ถ้า select('*') แล้วค่อยตัดทีหลัง Supabase ก็ยังต้องส่งข้อมูลก้อนใหญ่มาที่ function อยู่ดี ไม่ช่วยเรื่องเวลา)
-      const { data: products, error: pErr } = await supabase
-        .from('products')
-        .select('id, code, name, brand, category, price, frame_width, lens_width, lens_height, bridge_width, temple_length, acc_width, acc_length, material, images, created_at')
-        .order('created_at', { ascending: false });
+      // ยิง 2 query พร้อมกันแทนการรอทีละอัน (ไม่ต้องรอกันเพราะไม่ได้ใช้ผลลัพธ์ของกันและกัน)
+      const [{ data: products, error: pErr }, { data: variants, error: vErr }] = await Promise.all([
+        supabase
+          .from('products')
+          .select('id, code, name, brand, category, price, frame_width, lens_width, lens_height, bridge_width, temple_length, acc_width, acc_length, material, images, created_at')
+          .order('created_at', { ascending: false }),
+        supabase.from('product_variants').select('*'),
+      ]);
       if (pErr) throw pErr;
-
-      const { data: variants, error: vErr } = await supabase
-        .from('product_variants')
-        .select('*');
       if (vErr) throw vErr;
 
       const merged = products.map((p) => ({
@@ -52,6 +52,9 @@ export default async function handler(req, res) {
         variants: variants.filter((v) => v.product_id === p.id),
       }));
 
+      // cache ที่ Vercel edge สั้นๆ — ลูกค้าคนถัดไปที่เข้าเว็บใน 20 วินาทีถัดมาได้คำตอบทันทีไม่ต้องรอ Supabase
+      // แลกกับความหน่วง: แอดมินแก้ไขสินค้าแล้วลูกค้าอาจเห็นข้อมูลเก่าค้างได้สูงสุด ~20-40 วินาที (ไม่ได้ล้าง cache ทันทีตอนแก้ไข)
+      res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=40');
       res.status(200).json(merged);
       return;
     }
