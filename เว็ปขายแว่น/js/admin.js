@@ -665,6 +665,22 @@
     });
   }
 
+  // อัปโหลดรูปที่ยังเป็น base64 (เพิ่งครอปใหม่) ขึ้น Supabase Storage แล้วคืน URL แทน
+  // รูปที่เป็น URL อยู่แล้ว (ไม่ได้แก้ไขตอนเปิดแก้สินค้าเดิม) ข้ามไม่อัปโหลดซ้ำ
+  async function uploadImageIfNeeded(dataUrlOrUrl) {
+    if (!dataUrlOrUrl || dataUrlOrUrl.startsWith('http')) return dataUrlOrUrl;
+    const commaIdx = dataUrlOrUrl.indexOf(',');
+    const base64 = commaIdx >= 0 ? dataUrlOrUrl.slice(commaIdx + 1) : dataUrlOrUrl;
+    const res = await fetch('/api/upload-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64 }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'อัปโหลดรูปไม่สำเร็จ');
+    return data.url;
+  }
+
   async function saveNewProduct() {
     const err = document.getElementById('npError');
     const name = document.getElementById('npName').value.trim();
@@ -708,11 +724,28 @@
     }
     if (!code) code = DB.generateNextCode();
 
+    let uploadedMain, uploadedVariants;
+    err.textContent = 'กำลังอัปโหลดรูปภาพ...';
+    try {
+      uploadedMain = await Promise.all(pendingMainImages.map(async m => ({
+        cropped: await uploadImageIfNeeded(m.cropped),
+        original: await uploadImageIfNeeded(m.original),
+      })));
+      uploadedVariants = await Promise.all(pendingVariants.map(async v => ({
+        ...v,
+        images: await Promise.all((v.images || []).map(uploadImageIfNeeded)),
+      })));
+    } catch (uploadErr) {
+      err.textContent = 'อัปโหลดรูปภาพไม่สำเร็จ: ' + (uploadErr.message || uploadErr);
+      return;
+    }
+    err.textContent = '';
+
     const product = {
       code, name, brand, category, price, ...sizeData,
-      images: pendingMainImages.map(m => m.cropped),
-      imagesOriginal: pendingMainImages.map(m => m.original),
-      variants: pendingVariants.map(v => {
+      images: uploadedMain.map(m => m.cropped),
+      imagesOriginal: uploadedMain.map(m => m.original),
+      variants: uploadedVariants.map(v => {
         const row = { color: v.color.trim() || 'สีมาตรฐาน', stock: v.stock, images: v.images };
         if (v.existingId) row.id = v.existingId; // ไม่ส่ง id สำหรับสีใหม่ ให้เซิร์ฟเวอร์สร้าง uuid ให้เอง
         return row;
