@@ -52,9 +52,9 @@ export default async function handler(req, res) {
         variants: variants.filter((v) => v.product_id === p.id),
       }));
 
-      // cache ที่ Vercel edge สั้นๆ — ลูกค้าคนถัดไปที่เข้าเว็บใน 20 วินาทีถัดมาได้คำตอบทันทีไม่ต้องรอ Supabase
-      // แลกกับความหน่วง: แอดมินแก้ไขสินค้าแล้วลูกค้าอาจเห็นข้อมูลเก่าค้างได้สูงสุด ~20-40 วินาที (ไม่ได้ล้าง cache ทันทีตอนแก้ไข)
-      res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=40');
+      // cache ที่ Vercel edge — ลูกค้าคนถัดไปที่เข้าเว็บใน 60 วินาทีถัดมาได้คำตอบทันทีไม่ต้องรอ Supabase
+      // แลกกับความหน่วง: แอดมินแก้ไขสินค้าแล้วลูกค้าอาจเห็นข้อมูลเก่าค้างได้สูงสุด ~60-120 วินาที (ไม่ได้ล้าง cache ทันทีตอนแก้ไข)
+      res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
       res.status(200).json(merged);
       return;
     }
