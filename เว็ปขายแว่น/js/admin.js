@@ -1458,6 +1458,7 @@
           <div><strong>${o.orderNo}</strong> <span class="tag-muted">${new Date(o.createdAt).toLocaleString('th-TH')}</span></div>
           <div>${escapeHtml(o.customer.name)} · ฿${o.total.toLocaleString()}</div>
           ${o.isPreorder ? `<span class="status-pill" style="background:#eaf1fb;color:#2f5faa">🔓 Pre-order</span>` : ''}
+          ${o.shippingMethod === 'lalamove' ? `<span class="status-pill" style="background:#fff1e6;color:#b25e1f">🛵 Lalamove — แจ้งราคาแยก</span>` : ''}
           <span class="status-pill status-${o.status}">${DB.STATUS[o.status]}</span>
         </div>
         <div class="order-card-body" id="body-${o.id}">
@@ -1467,6 +1468,7 @@
             <div><strong>LINE ID:</strong> ${escapeHtml(o.customer.lineId || '-')}</div>
             <div><strong>รหัสไปรษณีย์:</strong> ${escapeHtml(o.customer.zipcode)}</div>
             <div><strong>ชำระเงิน:</strong> ${paymentMethodLabel(o.paymentMethod)}</div>
+            <div><strong>วิธีจัดส่ง:</strong> ${o.shippingMethod === 'lalamove' ? '🛵 Lalamove (ต้องแจ้งราคาค่าส่งแยกทาง LINE)' : 'มาตรฐาน'}</div>
             <div><strong>คูปอง:</strong> ${o.promoCode ? escapeHtml(o.promoCode) : '-'}</div>
             <div><strong>ขนส่ง:</strong> ${o.courier ? escapeHtml(DB.COURIERS[o.courier] || o.courier) : '-'}</div>
             <div><strong>เลข Tracking:</strong> ${o.trackingNo ? escapeHtml(o.trackingNo) : '-'}</div>

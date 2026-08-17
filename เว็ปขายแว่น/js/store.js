@@ -716,6 +716,7 @@
   let checkoutPromo = null;
   let checkoutPaymentMethod = 'promptpay';
   let checkoutSlipDataUrl = null;
+  let checkoutShippingMethod = 'standard'; // 'standard' = คิดค่าส่งตามน้ำหนักอัตโนมัติ, 'lalamove' = แอดมินแจ้งราคาแยกทาง LINE ภายหลัง
   let isSubmittingOrder = false; // กันกดยืนยันซ้ำ/ดับเบิลคลิกระหว่างรอ createOrder ทำให้ตัดสต็อกซ้ำ
 
   function renderCartCount() {
@@ -745,7 +746,10 @@
 
   function cartTotal(cart) { return cart.reduce((s, i) => s + i.price * i.qty, 0); }
   function cartTotalQty(cart) { return cart.reduce((s, i) => s + i.qty, 0); }
-  function currentShippingFee(cart) { return (checkoutPromo && (checkoutPromo.type || 'freeship') === 'freeship') ? 0 : DB.calcShippingFee(cart); }
+  function currentShippingFee(cart) {
+    if (checkoutShippingMethod === 'lalamove') return 0; // ไม่คิดผ่านเว็บ — แอดมินแจ้งราคาจริงแยกทาง LINE
+    return (checkoutPromo && (checkoutPromo.type || 'freeship') === 'freeship') ? 0 : DB.calcShippingFee(cart);
+  }
   function currentCodFee() { return checkoutPaymentMethod === 'cod' ? DB.COD_FEE : 0; }
   function currentSmallOrderFee(cart) { return DB.calcSmallOrderFee(cart); }
   function currentPromoDiscount() { return (checkoutPromo && checkoutPromo.type === 'amount') ? (checkoutPromo.discountAmount || 0) : 0; }
@@ -767,7 +771,7 @@
       const shippingFee = currentShippingFee(cart);
       const smallOrderFee = currentSmallOrderFee(cart);
       const discountAmount = currentPromoDiscount();
-      const codOk = DB.isCodAvailable(cart);
+      const codOk = DB.isCodAvailable(cart) && checkoutShippingMethod !== 'lalamove'; // Lalamove จัดส่งเอง เก็บเงินปลายทางแบบเดิมใช้ไม่ได้
       if (!codOk && checkoutPaymentMethod === 'cod') checkoutPaymentMethod = 'promptpay';
       const codFee = preorderMode ? 0 : currentCodFee();
       const overLimit = shippingFee == null;
@@ -805,7 +809,7 @@
           <div style="display:flex;justify-content:space-between"><span>ยอดสินค้า</span><span>฿${subtotal.toLocaleString()}</span></div>
           <div style="display:flex;justify-content:space-between">
             <span>ค่าจัดส่ง (${totalWeightKg.toFixed(1)} กก.)</span>
-            <span>${overLimit ? 'ติดต่อร้าน' : (shippingFee === 0 ? 'ฟรี' : '฿' + shippingFee.toLocaleString())}</span>
+            <span>${checkoutShippingMethod === 'lalamove' ? 'แจ้งราคาแยกทาง LINE' : (overLimit ? 'ติดต่อร้าน' : (shippingFee === 0 ? 'ฟรี' : '฿' + shippingFee.toLocaleString()))}</span>
           </div>
           ${smallOrderFee ? `<div style="display:flex;justify-content:space-between"><span>ค่าบริการออเดอร์เล็ก (ต่ำกว่า ${DB.SMALL_ORDER_MIN_QTY} ชิ้น)</span><span>฿${smallOrderFee.toLocaleString()}</span></div>` : ''}
           ${codFee ? `<div style="display:flex;justify-content:space-between"><span>ค่าบริการเก็บเงินปลายทาง</span><span>฿${codFee.toLocaleString()}</span></div>` : ''}
@@ -819,12 +823,21 @@
         <div class="tag-muted" style="margin-top:14px;color:var(--accent)">🔓 โหมด Pre-order — ข้ามขั้นตอนชำระเงิน แอดมินจะติดต่อสรุปยอด/วิธีชำระเงินให้ทาง LINE หลังได้รับออเดอร์</div>
         ` : `
         <div class="field" style="margin-top:14px">
+          <label>วิธีจัดส่ง</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="radio" name="shipMethod" value="standard" ${checkoutShippingMethod === 'standard' ? 'checked' : ''}> จัดส่งมาตรฐาน (คิดตามน้ำหนัก)</label>
+            <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="radio" name="shipMethod" value="lalamove" ${checkoutShippingMethod === 'lalamove' ? 'checked' : ''}> 🛵 Lalamove (แจ้งราคาแยกทาง LINE ภายหลัง)</label>
+          </div>
+          ${checkoutShippingMethod === 'lalamove' ? `<div class="tag-muted" style="margin-top:4px">Lalamove คิดราคาตามระยะทาง แอดมินจะติดต่อแจ้งค่าส่งจริงทาง LINE หลังยืนยันที่อยู่ ชำระค่าส่งส่วนนี้แยกจากยอดสั่งซื้อ</div>` : ''}
+        </div>
+        <div class="field" style="margin-top:14px">
           <label>วิธีชำระเงิน</label>
           <div style="display:flex;gap:16px;flex-wrap:wrap">
             <label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="radio" name="payMethod" value="promptpay" ${checkoutPaymentMethod === 'promptpay' ? 'checked' : ''}> พร้อมเพย์ (สแกน QR)</label>
             <label style="display:flex;gap:6px;align-items:center;font-weight:400;${codOk ? '' : 'opacity:.5'}"><input type="radio" name="payMethod" value="cod" ${checkoutPaymentMethod === 'cod' ? 'checked' : ''} ${codOk ? '' : 'disabled'}> เก็บเงินปลายทาง (+฿${DB.COD_FEE})</label>
           </div>
-          ${!codOk ? `<div class="tag-muted" style="margin-top:4px">เก็บเงินปลายทางให้บริการเฉพาะน้ำหนักรวมไม่เกิน ${DB.COD_MAX_KG} กก. คำสั่งซื้อนี้เกินกำหนด จึงรองรับเฉพาะพร้อมเพย์</div>` : ''}
+          ${!codOk && checkoutShippingMethod === 'lalamove' ? `<div class="tag-muted" style="margin-top:4px">เลือกจัดส่งแบบ Lalamove แล้ว รองรับเฉพาะพร้อมเพย์ (ค่าส่ง Lalamove ชำระแยกทาง LINE)</div>` : ''}
+          ${!codOk && checkoutShippingMethod !== 'lalamove' ? `<div class="tag-muted" style="margin-top:4px">เก็บเงินปลายทางให้บริการเฉพาะน้ำหนักรวมไม่เกิน ${DB.COD_MAX_KG} กก. คำสั่งซื้อนี้เกินกำหนด จึงรองรับเฉพาะพร้อมเพย์</div>` : ''}
         </div>
         `}
 
@@ -870,6 +883,9 @@
       if (removePromoBtn) removePromoBtn.addEventListener('click', () => { checkoutPromo = null; renderCheckout(); });
       body.querySelectorAll('input[name="payMethod"]').forEach(r => {
         r.addEventListener('change', e => { checkoutPaymentMethod = e.target.value; renderCheckout(); });
+      });
+      body.querySelectorAll('input[name="shipMethod"]').forEach(r => {
+        r.addEventListener('change', e => { checkoutShippingMethod = e.target.value; renderCheckout(); });
       });
       const goBtn = document.getElementById('btnGoPayment');
       if (goBtn) goBtn.addEventListener('click', () => { checkoutStep = preorderMode ? 3 : 2; renderCheckout(); });
@@ -1048,11 +1064,13 @@
         promoCode: checkoutPromo ? checkoutPromo.code : null,
         paymentSlip: checkoutSlipDataUrl,
         isPreorder: preorderMode,
+        shippingMethod: preorderMode ? 'standard' : checkoutShippingMethod,
       });
       setCart([]);
       checkoutPromo = null;
       checkoutPaymentMethod = 'promptpay';
       checkoutSlipDataUrl = null;
+      checkoutShippingMethod = 'standard';
       checkoutStep = 4;
       renderCheckout();
       renderGrid();

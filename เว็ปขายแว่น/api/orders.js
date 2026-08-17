@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       const {
         items = [], total, customer,
         subtotal, shippingFee, smallOrderFee, codFee, discountAmount,
-        paymentMethod, promoCode, paymentSlip, isPreorder,
+        paymentMethod, promoCode, paymentSlip, isPreorder, shippingMethod,
       } = req.body || {};
       if (!items.length || !customer?.phone) {
         res.status(400).json({ error: 'items and customer.phone are required' });
@@ -69,6 +69,7 @@ export default async function handler(req, res) {
           promo_code: promoCode || null,
           payment_slip: paymentSlip || null,
           is_preorder: !!isPreorder,
+          shipping_method: shippingMethod || 'standard',
         })
         .select()
         .single();

@@ -142,6 +142,7 @@
       courier: row.courier || null,
       codDeliveryStatus: row.cod_delivery_status || null,
       isPreorder: !!row.is_preorder,
+      shippingMethod: row.shipping_method || 'standard',
       customer: cust,
       items: (row.items || []).map(mapOrderItem),
       createdAt: row.created_at,
@@ -313,11 +314,11 @@
     return cache.orders.filter((o) => o.customer.phone === p);
   }
 
-  async function createOrder({ items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer, paymentMethod, promoCode, paymentSlip, isPreorder }) {
+  async function createOrder({ items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer, paymentMethod, promoCode, paymentSlip, isPreorder, shippingMethod }) {
     const body = {
       items, subtotal, shippingFee, smallOrderFee, codFee, discountAmount, total, customer,
       paymentMethod: paymentMethod || 'promptpay', promoCode: promoCode || null, paymentSlip: paymentSlip || null,
-      isPreorder: !!isPreorder,
+      isPreorder: !!isPreorder, shippingMethod: shippingMethod || 'standard',
     };
     const resp = await apiFetch('/api/orders', { method: 'POST', body: JSON.stringify(body) });
 
@@ -338,6 +339,7 @@
       courier: null,
       codDeliveryStatus: null,
       isPreorder: !!resp.is_preorder,
+      shippingMethod: resp.shipping_method || 'standard',
       customer,
       items: resp.items || items,
       createdAt: resp.created_at,

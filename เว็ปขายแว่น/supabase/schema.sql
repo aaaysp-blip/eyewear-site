@@ -87,6 +87,7 @@ alter table orders add column if not exists promo_code text;
 alter table orders add column if not exists payment_slip text;
 alter table orders add column if not exists cod_delivery_status text;
 alter table orders add column if not exists is_preorder boolean not null default false;
+alter table orders add column if not exists shipping_method text not null default 'standard';
 
 -- ---------- order_items ----------
 create table if not exists order_items (
