@@ -716,6 +716,7 @@
   let checkoutPromo = null;
   let checkoutPaymentMethod = 'promptpay';
   let checkoutSlipDataUrl = null;
+  let isSubmittingOrder = false; // กันกดยืนยันซ้ำ/ดับเบิลคลิกระหว่างรอ createOrder ทำให้ตัดสต็อกซ้ำ
 
   function renderCartCount() {
     const cart = getCart();
@@ -1020,34 +1021,47 @@
 
     const cart = getCart();
     if (!cart.length) return;
-    const preorderMode = isPreorderUnlocked();
-    const subtotal = cartTotal(cart);
-    const shippingFee = currentShippingFee(cart) || 0;
-    const smallOrderFee = currentSmallOrderFee(cart);
-    const discountAmount = currentPromoDiscount();
-    const codFee = preorderMode ? 0 : currentCodFee();
-    const total = Math.max(0, subtotal + shippingFee + smallOrderFee + codFee - discountAmount);
-    lastOrder = await DB.createOrder({
-      items: cart,
-      subtotal,
-      shippingFee,
-      smallOrderFee,
-      codFee,
-      discountAmount,
-      total,
-      customer: { name, phone, lineId, address, subdistrict, district, province, zipcode },
-      paymentMethod: preorderMode ? 'line' : checkoutPaymentMethod,
-      promoCode: checkoutPromo ? checkoutPromo.code : null,
-      paymentSlip: checkoutSlipDataUrl,
-      isPreorder: preorderMode,
-    });
-    setCart([]);
-    checkoutPromo = null;
-    checkoutPaymentMethod = 'promptpay';
-    checkoutSlipDataUrl = null;
-    checkoutStep = 4;
-    renderCheckout();
-    renderGrid();
+    if (isSubmittingOrder) return; // กันกดซ้ำระหว่างรอผลจากเซิร์ฟเวอร์
+    isSubmittingOrder = true;
+    const btnConfirm = document.getElementById('btnConfirmOrder');
+    const btnConfirmLabel = btnConfirm ? btnConfirm.textContent : '';
+    if (btnConfirm) { btnConfirm.disabled = true; btnConfirm.textContent = 'กำลังดำเนินการ...'; }
+
+    try {
+      const preorderMode = isPreorderUnlocked();
+      const subtotal = cartTotal(cart);
+      const shippingFee = currentShippingFee(cart) || 0;
+      const smallOrderFee = currentSmallOrderFee(cart);
+      const discountAmount = currentPromoDiscount();
+      const codFee = preorderMode ? 0 : currentCodFee();
+      const total = Math.max(0, subtotal + shippingFee + smallOrderFee + codFee - discountAmount);
+      lastOrder = await DB.createOrder({
+        items: cart,
+        subtotal,
+        shippingFee,
+        smallOrderFee,
+        codFee,
+        discountAmount,
+        total,
+        customer: { name, phone, lineId, address, subdistrict, district, province, zipcode },
+        paymentMethod: preorderMode ? 'line' : checkoutPaymentMethod,
+        promoCode: checkoutPromo ? checkoutPromo.code : null,
+        paymentSlip: checkoutSlipDataUrl,
+        isPreorder: preorderMode,
+      });
+      setCart([]);
+      checkoutPromo = null;
+      checkoutPaymentMethod = 'promptpay';
+      checkoutSlipDataUrl = null;
+      checkoutStep = 4;
+      renderCheckout();
+      renderGrid();
+    } catch (submitErr) {
+      err.textContent = 'สั่งซื้อไม่สำเร็จ: ' + (submitErr.message || submitErr) + ' — กรุณาลองใหม่อีกครั้ง';
+    } finally {
+      isSubmittingOrder = false;
+      if (btnConfirm) { btnConfirm.disabled = false; btnConfirm.textContent = btnConfirmLabel; }
+    }
   }
 
   // ---------------- init ----------------

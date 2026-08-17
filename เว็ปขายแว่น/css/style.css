@@ -47,17 +47,25 @@ button{ font-family: inherit; }
   padding: 16px 20px;
   max-width: var(--maxw); margin:0 auto;
   gap: 16px;
+  flex-wrap: wrap;
 }
 .brand{ font-size: 20px; font-weight: 600; letter-spacing: .02em; }
 .brand small{ display:block; font-size:11px; color:var(--text-muted); font-weight:400; letter-spacing:.08em; }
-.topbar-actions{ display:flex; align-items:center; gap:10px; }
-.topbar-search{ flex:1; max-width:420px; }
+.topbar-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.topbar-actions-wrap{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+/* flex-basis:220px (ไม่ใช่ 0) กัน search box ถูกบีบจนแทบมองไม่เห็นตอนพื้นที่ไม่พอ (เช่นจอ iPad) —
+   ถ้าไม่พอจริงๆ จะ wrap ลงบรรทัดใหม่แทนที่จะบีบเล็กจิ๋วบนบรรทัดเดียวกัน */
+.topbar-search{ flex:1 1 220px; max-width:420px; }
 .topbar-search input{
   width:100%; padding:9px 14px; border-radius:999px; border:1px solid var(--border);
   background:var(--surface-2); font-size:13.5px;
 }
 .topbar-search input:focus{ outline:none; border-color:var(--accent); background:var(--surface); }
-@media (max-width:720px){ .topbar-search{ display:none; } }
+@media (max-width:720px){
+  .topbar-inner{ align-items:stretch; }
+  .topbar-search{ max-width:none; flex-basis:100%; }
+  .topbar-actions-wrap{ align-items:stretch; }
+}
 
 .btn{
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
