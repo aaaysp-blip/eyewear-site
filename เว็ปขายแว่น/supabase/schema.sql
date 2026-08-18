@@ -174,6 +174,16 @@ create table if not exists reviews (
   updated_at timestamptz
 );
 
+-- ---------- analytics_events (นับคนเข้าเว็บ/กดลงตะกร้า ไม่เก็บข้อมูลระบุตัวตน) ----------
+create table if not exists analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  event_type text not null,
+  visitor_id text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_analytics_events_type_created on analytics_events(event_type, created_at);
+
 -- ---------- Row Level Security ----------
 -- ปิดการเข้าถึงจาก anon/authenticated key ทั้งหมด (ไม่มี policy = ปฏิเสธหมด)
 -- api/*.js ใช้ SUPABASE_SERVICE_ROLE_KEY ซึ่ง bypass RLS อยู่แล้ว จึงยังทำงานได้ปกติ
@@ -187,6 +197,7 @@ alter table restocks enable row level security;
 alter table restock_items enable row level security;
 alter table promotions enable row level security;
 alter table reviews enable row level security;
+alter table analytics_events enable row level security;
 
 -- service_role ต้องมี grant ตรงๆ ด้วย (RLS bypass ไม่ได้แทนที่ grant พื้นฐานของ Postgres)
 grant usage on schema public to service_role;

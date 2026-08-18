@@ -139,7 +139,20 @@
       <div class="stat-card"><div class="lbl">ยอดขายเดือนนี้</div><div class="val">฿${DB.monthSales().toLocaleString()}</div></div>
       <div class="stat-card"><div class="lbl">ออเดอร์ที่รอดำเนินการ</div><div class="val">${DB.pendingOrderCount()}</div></div>
       <div class="stat-card"><div class="lbl">ใบสั่งซื้อที่รอตรวจรับ</div><div class="val">${DB.pendingRestockCount()}</div></div>
+      <div class="stat-card"><div class="lbl">คนเข้าเว็บวันนี้</div><div class="val" id="statVisitorsToday">…</div></div>
+      <div class="stat-card"><div class="lbl">กดลงตะกร้าวันนี้</div><div class="val" id="statAddToCartToday">…</div></div>
     `;
+    DB.getAnalyticsSummary().then(summary => {
+      const v = document.getElementById('statVisitorsToday');
+      const c = document.getElementById('statAddToCartToday');
+      if (v) v.textContent = summary.pageviewVisitorsToday;
+      if (c) c.textContent = summary.addToCartVisitorsToday;
+    }).catch(() => {
+      const v = document.getElementById('statVisitorsToday');
+      const c = document.getElementById('statAddToCartToday');
+      if (v) v.textContent = '-';
+      if (c) c.textContent = '-';
+    });
 
     const best = DB.bestSellers(8);
     document.getElementById('bestSellerBody').innerHTML = best.length

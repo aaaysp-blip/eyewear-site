@@ -55,6 +55,29 @@
     return data;
   }
 
+  // ---------- Analytics (นับคนเข้าเว็บ/กดลงตะกร้า แบบไม่เก็บข้อมูลระบุตัวตน) ----------
+  function getVisitorId() {
+    try {
+      let id = localStorage.getItem('ew_visitor_id');
+      if (!id) {
+        id = (crypto.randomUUID ? crypto.randomUUID() : 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2));
+        localStorage.setItem('ew_visitor_id', id);
+      }
+      return id;
+    } catch (e) {
+      return 'v_' + Date.now(); // เผื่อ localStorage ใช้ไม่ได้ (เช่น private mode บางเบราว์เซอร์)
+    }
+  }
+
+  function trackEvent(eventType) {
+    // fire-and-forget เสมอ — ห้ามให้การนับสถิติกระทบความเร็ว/พังหน้าร้านเด็ดขาด
+    apiFetch('/api/track', { method: 'POST', body: JSON.stringify({ eventType, visitorId: getVisitorId() }) }).catch(() => {});
+  }
+
+  async function getAnalyticsSummary() {
+    return apiFetch('/api/analytics');
+  }
+
   // ---------- mapping: snake_case (Supabase) <-> camelCase (โค้ดฝั่งหน้าเว็บ) ----------
   function mapProduct(row) {
     return {
@@ -652,6 +675,7 @@
   global.DB = {
     init, ready,
     placeholderImage,
+    trackEvent, getAnalyticsSummary,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
     generateNextCode, updateVariantStock, isNew, renameBrand, fetchProductDetail,
     STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, cancelOrder, setTrackingAndShip, getOrdersForPhone, markCodDelivered, markCodReturned,

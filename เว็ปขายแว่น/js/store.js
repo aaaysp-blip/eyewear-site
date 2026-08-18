@@ -392,6 +392,7 @@
       });
     }
     setCart(cart);
+    DB.trackEvent('add_to_cart');
     showToast('เพิ่มลงตะกร้าแล้ว — เลือกสีอื่นเพิ่มได้เลย');
     popupState.qty = (v.stock > 0 || isPreorderUnlocked()) ? 1 : 0;
     renderProductPopup();
@@ -1083,6 +1084,7 @@
   }
 
   // ---------------- init ----------------
+  DB.trackEvent('pageview'); // fire-and-forget นับสถิติคนเข้าเว็บ ไม่รอ ไม่บล็อกอะไร
   // แสดงการ์ดสินค้าทันทีที่โหลดสินค้าเสร็จ ไม่ต้องรอออเดอร์/ลูกค้า/โปรโมชั่น/รีวิว (โหลดต่อเบื้องหลัง)
   DB.init().then(() => {
     renderCartCount();
