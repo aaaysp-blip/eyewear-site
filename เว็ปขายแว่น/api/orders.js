@@ -109,11 +109,35 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PATCH') {
-      const { id, status, trackingNo, courier, codDeliveryStatus } = req.body || {};
+      const { id, status, trackingNo, courier, codDeliveryStatus, cancel } = req.body || {};
       if (!id) {
         res.status(400).json({ error: 'id is required' });
         return;
       }
+
+      if (cancel) {
+        const { data: order, error: oErr } = await supabase.from('orders').select('status, is_preorder').eq('id', id).single();
+        if (oErr) throw oErr;
+        if (order.status !== 0) {
+          // คืนสต็อกให้ทุกรายการในออเดอร์ (ข้ามถ้าเป็น pre-order เพราะไม่เคยตัดสต็อกจริงตั้งแต่แรก)
+          if (!order.is_preorder) {
+            const { data: items, error: iErr } = await supabase.from('order_items').select('variant_id, qty').eq('order_id', id);
+            if (iErr) throw iErr;
+            for (const it of items) {
+              if (!it.variant_id) continue;
+              const { data: variant } = await supabase.from('product_variants').select('stock').eq('id', it.variant_id).single();
+              if (variant) {
+                await supabase.from('product_variants').update({ stock: variant.stock + it.qty }).eq('id', it.variant_id);
+              }
+            }
+          }
+          const { error: cancelErr } = await supabase.from('orders').update({ status: 0, updated_at: new Date().toISOString() }).eq('id', id);
+          if (cancelErr) throw cancelErr;
+        }
+        res.status(200).json({ ok: true });
+        return;
+      }
+
       const patch = { updated_at: new Date().toISOString() };
       if (status != null) patch.status = status;
       if (trackingNo != null) patch.tracking_no = trackingNo;

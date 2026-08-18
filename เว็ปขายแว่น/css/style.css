@@ -382,6 +382,7 @@ tr:last-child td{ border-bottom:none; }
 .stock-input{ width:70px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; }
 
 .status-pill{ display:inline-block; padding:4px 11px; border-radius:999px; font-size:12px; font-weight:600; }
+.status-0{ background:var(--danger-bg); color:var(--danger); }
 .status-1{ background:var(--warn-bg); color:#8a611f; }
 .status-2{ background:#e3ecfb; color:#2b57a3; }
 .status-3{ background:#efe6fa; color:#6a3fa0; }

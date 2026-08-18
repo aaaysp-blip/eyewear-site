@@ -1292,6 +1292,10 @@
 
   // ================= Orders =================
   function renderOrderActionsHtml(o) {
+    const cancelBtnHtml = `<button class="btn btn-danger btn-sm" data-cancel-order="${o.id}" type="button" style="margin-top:10px">✕ ยกเลิกออเดอร์ (คืนสต็อกอัตโนมัติ)</button>`;
+    if (o.status === 0) {
+      return `<span class="status-pill status-0">ยกเลิกแล้ว — คืนสต็อกให้อัตโนมัติแล้ว</span>`;
+    }
     if (o.status === 1) {
       const slipHtml = o.paymentSlip
         ? `<div style="margin-bottom:10px">
@@ -1299,13 +1303,14 @@
              <a href="${o.paymentSlip}" target="_blank"><img src="${o.paymentSlip}" style="max-width:200px;border-radius:8px;border:1px solid var(--border)"></a>
            </div>`
         : `<div class="tag-muted" style="margin-bottom:10px">ลูกค้าไม่ได้แนบสลิปมา — ตรวจสอบยอดโอนเข้าบัญชีร้านเองก่อนกดยืนยัน</div>`;
-      return `${slipHtml}<button class="btn btn-primary" data-advance="${o.id}">ตรวจสลิป/ยอดโอนแล้ว → ไปขั้นตอนโทรยืนยัน</button>`;
+      return `${slipHtml}<button class="btn btn-primary" data-advance="${o.id}">ตรวจสลิป/ยอดโอนแล้ว → ไปขั้นตอนโทรยืนยัน</button>${cancelBtnHtml}`;
     }
     if (o.status === 2) {
       const codNote = o.paymentMethod === 'cod' ? ' (ออเดอร์เก็บเงินปลายทาง ควรย้ำยอดที่ต้องชำระตอนรับของ ฿' + o.total.toLocaleString() + ' ด้วย)' : '';
       return `
         <div class="tag-muted" style="margin-bottom:8px">โทรยืนยันออเดอร์กับลูกค้าก่อน${codNote} แล้วค่อยกดพิมพ์ใบปะหน้า</div>
         <button class="btn btn-primary" data-print-label="${o.id}">🖨 พิมพ์ใบปะหน้า (ยืนยันโทร + แพ็คแล้ว)</button>
+        ${cancelBtnHtml}
       `;
     }
     if (o.status === 3) {
@@ -1326,6 +1331,7 @@
           <button class="btn" data-print-label="${o.id}" type="button">🖨 พิมพ์ใบปะหน้าอีกครั้ง</button>
           <button class="btn btn-primary" data-confirm-ship="${o.id}" type="button">ยืนยันจัดส่งแล้ว</button>
         </div>
+        ${cancelBtnHtml}
       `;
     }
     // status 4 — จัดส่งแล้ว
@@ -1547,6 +1553,15 @@
         await DB.markCodDelivered(btn.dataset.codDelivered);
         renderOrders();
         showToast('บันทึกผลส่งสำเร็จแล้ว');
+      });
+    });
+    wrap.querySelectorAll('[data-cancel-order]').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!confirm('ยืนยันยกเลิกออเดอร์นี้? ระบบจะคืนสต็อกสินค้าทั้งหมดในออเดอร์นี้ให้อัตโนมัติ และไม่สามารถย้อนกลับได้')) return;
+        await DB.cancelOrder(btn.dataset.cancelOrder);
+        renderOrders();
+        showToast('ยกเลิกออเดอร์และคืนสต็อกแล้ว');
       });
     });
     wrap.querySelectorAll('[data-cod-returned]').forEach(btn => {

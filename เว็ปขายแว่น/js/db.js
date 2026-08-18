@@ -293,6 +293,7 @@
 
   // ---------- Orders ----------
   const STATUS = {
+    0: 'ยกเลิกแล้ว',
     1: 'รอตรวจสลิป',
     2: 'รอยืนยันเบอร์โทร',
     3: 'แพ็คแล้ว',
@@ -368,6 +369,21 @@
   }
 
   function nextStatus(status) { return Math.min(4, status + 1); }
+
+  async function cancelOrder(id) {
+    await apiFetch('/api/orders', { method: 'PATCH', body: JSON.stringify({ id, cancel: true }) });
+    const o = cache.orders.find((x) => x.id === id);
+    if (!o || o.status === 0) return; // กันคืนสต็อกซ้ำถ้ายกเลิกไปแล้ว
+    if (!o.isPreorder) {
+      o.items.forEach((item) => {
+        const p = cache.products.find((x) => x.id === item.productId);
+        const v = p && p.variants.find((x) => x.id === item.variantId);
+        if (v) v.stock += item.qty;
+      });
+    }
+    o.status = 0;
+    o.updatedAt = new Date().toISOString();
+  }
 
   async function setTrackingAndShip(id, trackingNo, courier) {
     const trimmed = String(trackingNo || '').trim();
@@ -522,17 +538,18 @@
   function monthSales() {
     const now = new Date();
     const orders = cache.orders.filter((o) => {
+      if (o.status === 0) return false; // ไม่นับออเดอร์ที่ยกเลิกแล้วเป็นยอดขาย
       const d = new Date(o.createdAt);
       return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
     });
     return orders.reduce((s, o) => s + o.total, 0);
   }
   function pendingOrderCount() {
-    return cache.orders.filter((o) => o.status < 4).length;
+    return cache.orders.filter((o) => o.status > 0 && o.status < 4).length;
   }
   function bestSellers(limit) {
     const counts = {};
-    cache.orders.forEach((o) => {
+    cache.orders.filter((o) => o.status !== 0).forEach((o) => {
       o.items.forEach((it) => {
         const key = it.productId + '|' + it.name;
         counts[key] = counts[key] || { name: it.name, code: it.code, qty: 0 };
@@ -637,7 +654,7 @@
     placeholderImage,
     getProducts, getProduct, getProductByCode, saveProduct, deleteProduct,
     generateNextCode, updateVariantStock, isNew, renameBrand, fetchProductDetail,
-    STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, setTrackingAndShip, getOrdersForPhone, markCodDelivered, markCodReturned,
+    STATUS, COURIERS, getOrders, getOrder, createOrder, updateOrderStatus, nextStatus, cancelOrder, setTrackingAndShip, getOrdersForPhone, markCodDelivered, markCodReturned,
     getRestocks, getRestock, createRestock, updateRestockReceivedQty, confirmRestockReceive, pendingRestockCount,
     getCustomers, getCustomerByPhone, getCustomerStats,
     getConfig, setConfig, verifyAdminPassword, verifyPreorderCode, revealPreorderCode,
